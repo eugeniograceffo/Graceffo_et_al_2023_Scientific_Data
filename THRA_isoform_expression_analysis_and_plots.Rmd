@@ -1,0 +1,1083 @@
+---
+title: "THRA Isoform 1 and Isoform 2 Relative Expression"
+output:
+  html_document:
+    toc: True
+    toc_float: True
+    df_print: paged
+---
+
+INTRODUCTION to the Experiment
+
+A total of 24 samples of human tissues. RNA seq data. First-Stranded pair-end reads. Read counts of exon 9a (Chr17:40089333) and exon 9b (Chr17:40089334)
+
+```{r}
+#load libraries
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(plotly)
+library(matrixStats)
+library(ggrepel)
+library(scales)
+library(readxl)
+library(dplyr)
+library(ggpubr)
+
+```
+
+
+```{r}
+## set paths for output figure
+path_plots <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/THRA_isoform_Expression_Coverage"
+
+path_plots_featurecounts <-"~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/featureCounts_outputs/plots"
+
+## load metadata file
+
+metadata <- read_excel("metadata.xlsx")
+
+
+## load sequencing depth for normalization
+
+depth <- read_delim("Sequencing_depth_Takara.txt")
+
+
+##Load bedtools outputs
+
+file_links_bedtools <- list.files(path= "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/bedtools_outputs" , pattern = "*.txt", full.names=T)
+
+
+# initialize an empty dataframe
+data_bedtools <- data_frame("V1"=character(),
+                   "V2"=integer(),
+                   "V3"=integer(),
+                   "V4"=character(),
+                   "V5"=double(),
+                   "Sample"=character()) 
+
+for (x in file_links_bedtools) {
+  table_sample <- read.delim(x, header = FALSE) ## read table
+  basename_sample <- str_remove(basename(x), "_Aligned.out.bedtools.txt")  ## get the sample name from the file path
+  table_sample <- mutate(table_sample, "Sample"=basename_sample)
+  data_bedtools <- bind_rows(data_bedtools, table_sample)
+  
+}
+
+data_bedtools
+
+##Load mosdepth outputs
+
+file_links_mosdepth <- list.files(path= "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/mosdepth_outputs" , pattern = "*.bed", full.names=T)
+
+
+# initialize an empty dataframe
+data_mosdepth <- data_frame("V1"=character(),
+                   "V2"=integer(),
+                   "V3"=integer(),
+                   "V4"=character(),
+                   "V5"=double(),
+                   "Sample"=character()) 
+
+for (x in file_links_mosdepth) {
+  table_sample <- read.delim(x, header = FALSE) ## read table
+  basename_sample <- str_remove(basename(x), "_Aligned.out.regions.bed")  ## get the sample name from the file path
+  table_sample <- mutate(table_sample, "Sample"=basename_sample)
+  data_mosdepth <- bind_rows(data_mosdepth, table_sample)
+  
+}
+
+data_mosdepth
+
+```
+
+```{r}
+## Let's rearrange the data in a useful way
+data_mosdepth <- data_mosdepth %>%
+  select(Sample, Isoform = V4, Reads_count =V5) %>%
+  spread(key="Isoform", value="Reads_count") %>%
+  mutate("Package" = as.factor("mosdepth")) %>%
+  rename("THRA1_exon9b" = THRA1) %>%
+  rename("THRA2_exon10" = THRA2)
+
+
+## Lets normalize by the M of uniquely aligned reads
+data_mosdepth_normalized <- inner_join(data_mosdepth, depth, by ="Sample")
+
+data_mosdepth_normalized <- data_mosdepth_normalized %>% 
+  mutate(across(where(is.numeric), ~ .x/`M Aligned`)) # value/M of reads
+
+data_mosdepth_normalized
+
+
+
+
+data_bedtools <- data_bedtools %>%
+  select(Sample, Isoform = V4, Reads_count =V5) %>%
+  spread(key="Isoform", value="Reads_count")%>%
+  mutate("Package" = as.factor("bedtools"))
+
+## Lets normalize by the M of uniquely aligned reads
+data_bedtools_normalized <- inner_join(data_bedtools, depth, by ="Sample")
+
+data_bedtools_normalized <- data_bedtools_normalized %>% 
+  mutate(across(where(is.numeric), ~ .x/`M Aligned`)) # value/M of reads
+
+data_bedtools_normalized
+```
+
+```{r}
+## Let's merge the two dataframes into one
+
+dataset <- full_join(data_mosdepth_normalized, data_bedtools_normalized) 
+
+dataset
+```
+
+
+
+```{r}
+## Let's calculate THRA1 (counts of 9b) and THRA2 (9a-9b)
+
+dataset <- dataset %>%
+  mutate("THRA1"= dataset$`9b`) %>%
+  mutate("THRA2"=dataset$`9a`-dataset$`9b`) %>%
+  rename("Read_counts_9a" = "9a") %>%
+  rename("Read_counts_9b" = "9b") %>%
+  relocate(Package, .after=Sample)
+
+dataset
+
+```
+```{r}
+## Let's add the final calculations
+
+dataset_final <- dataset %>%
+  mutate("delta_A1vsA2" = THRA1 - THRA2) %>%
+  mutate("THRA1_Percentage" = round(THRA1/Read_counts_9a*100)) %>%
+  mutate("THRA2_Percentage" = round(100-THRA1_Percentage)) %>%
+  mutate("THRA1_higher" = THRA1 > THRA2) %>%
+  mutate("delta_percentage" = THRA1_Percentage - THRA2_Percentage)
+
+dataset_final
+
+write.csv(filter(dataset_final, Package=="mosdepth"), 
+          file="test.csv")
+  
+```
+
+
+
+
+
+```{r}
+# Barchart showing Expression of A1 and A2 using exons
+total_plot <-  filter(dataset_final, Package== "mosdepth") %>%
+  select(Sample,THRA1_exon9b, THRA2_exon10)
+
+total_plot <- total_plot[order(total_plot$THRA2_exon10 + total_plot$THRA1_exon9b), ]  # sort
+total_plot$Sample <- factor(total_plot$Sample, levels = total_plot$Sample)  # convert to factor to retain sorted order in plot.
+
+total_plot <- pivot_longer(total_plot, c("THRA1_exon9b","THRA2_exon10"), names_to = "Isoform", values_to = "Expression")
+  
+
+
+ggplot(total_plot, aes(x=Sample, y=Expression, label=Isoform)) + 
+  geom_bar(stat='summary', position = "stack", aes(fill=Isoform), width=.5)  +
+   theme_light(base_size = 14)+
+  scale_y_continuous("pseudo TPM \n (Reads/exon length/M aligned sequences)") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1_exon9b", "THRA2_exon10"), 
+                    values = c("THRA1_exon9b"="#A2D2DB", "THRA2_exon10"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= "",
+       caption = "")+
+  coord_flip()
+
+## save plot
+ggsave("THRA1vsA2_exons_stacked.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+```{r}
+# Barchart showing Expression of A1 and A2 using nucleotides
+total_plot <-  filter(dataset_final, Package== "mosdepth") %>%
+  select(Sample,THRA1, THRA2)
+
+total_plot <- total_plot[order(total_plot$THRA2 + total_plot$THRA1), ]  # sort
+total_plot$Sample <- factor(total_plot$Sample, levels = total_plot$Sample)  # convert to factor to retain sorted order in plot.
+
+total_plot <- pivot_longer(total_plot, c("THRA1","THRA2"), names_to = "Isoform", values_to = "Expression")
+  
+
+
+ggplot(total_plot, aes(x=Sample, y=Expression, label=Isoform)) + 
+  geom_bar(stat='summary', position = "stack", aes(fill=Isoform), width=.5)  +
+   theme_light(base_size = 14)+
+  scale_y_continuous("pseudo TPM \n (Reads/exon length/M aligned sequences)") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= "",
+       caption = "")+
+  coord_flip()
+
+## save plot
+ggsave("THRA1vsA2_nucleotides_stacked.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+```{r}
+### Let's compare nucleotide vs exon reads
+total_plot_comparison <-  filter(dataset_final, Package== "mosdepth") %>%
+  select(Sample,THRA1, THRA2,THRA1_exon9b, THRA2_exon10 ) %>%
+  mutate(delta_nuclotide = THRA2 - THRA1, delta_exon = THRA2_exon10 - THRA1_exon9b)
+
+total_plot_comparison <- total_plot_comparison[order(total_plot_comparison$delta_nuclotide), ]  # sort
+total_plot_comparison$Sample <- factor(total_plot_comparison$Sample, levels = total_plot_comparison$Sample)  # convert to factor to retain sorted order in plot.
+
+total_plot_comparison <- select(total_plot_comparison, Sample, nucleotide=delta_nuclotide, exon=delta_exon ) %>%
+  pivot_longer(c("nucleotide","exon"), names_to = "Method", values_to = "Delta")
+
+ggplot(total_plot_comparison, aes(Method, Sample , fill=`Delta`)) +
+  geom_tile()+
+  ggtitle("Delta comparison between methods (THRA2-THRA1)") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank()) +
+  theme(axis.title.x=element_blank()) +
+  scale_fill_gradient2('Delta', breaks = c(-4, 0,  26),  low = "#56B4E9", high = "darksalmon", guide="colorbar")
+
+
+
+ggsave("Heatmap_comparison_nucleotide_vs_exon.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+```{r}
+### Let's compare nucleotide vs exon reads with AUT AUT
+total_plot_comparison <-  filter(dataset_final, Package== "mosdepth") %>%
+  select(Sample,THRA1, THRA2,THRA1_exon9b, THRA2_exon10 ) %>%
+  mutate(delta_nuclotide = THRA2 > THRA1, delta_exon = THRA2_exon10 > THRA1_exon9b)
+
+total_plot_comparison <- total_plot_comparison[order(total_plot_comparison$delta_nuclotide), ]  # sort
+total_plot_comparison$Sample <- factor(total_plot_comparison$Sample, levels = total_plot_comparison$Sample)  # convert to factor to retain sorted order in plot.
+
+total_plot_comparison <- select(total_plot_comparison, Sample, nucleotide=delta_nuclotide, exon=delta_exon ) %>%
+  pivot_longer(c("nucleotide","exon"), names_to = "Method", values_to = "Delta")
+
+ggplot(total_plot_comparison, aes(Method, Sample , fill=`Delta`)) +
+  geom_tile()+
+  ggtitle("Delta comparison between methods") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank()) +
+  theme(axis.title.x=element_blank()) +
+  scale_fill_manual('THRA2 more expressed?', values = c("TRUE"= "darksalmon", "FALSE" = "#56B4E9"))
+
+
+
+
+ggsave("Heatmap_comparison_nucleotide_vs_exon_AUT_AUT.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+### Lets compare the read counts of exon 9a between the 2 tools
+graph_data <- dataset_final %>%
+  select(Sample, Package, Read_counts_9a)
+
+
+ggplot(graph_data, aes(x = Sample, y = Read_counts_9a, fill = Package)) +
+  geom_col( width=0.5, position=position_dodge(width=0.7)) +
+  scale_y_continuous("Read counts") +
+  scale_fill_manual("", values = c("bedtools" = "darksalmon", "mosdepth" = "#56B4E9")) +
+  ggtitle("Tools comparison - Exon 9a") +
+  theme_light(base_size = 12) +
+  scale_x_discrete(guide = guide_axis(angle = -35)) +
+  theme(axis.title.x=element_blank())
+
+#ggplotly()
+
+## save plot
+ggsave("Read_counts_9a_tool_comparison.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+```{r}
+### Lets compare the read counts of exon 9b between the 2 tools
+graph_data <- dataset_final %>%
+  select(Sample, Package, Read_counts_9b)
+
+
+ggplot(graph_data, aes(x = Sample, y = Read_counts_9b, fill = Package)) +
+  geom_col( width=0.5, position=position_dodge(width=0.7)) +
+  scale_y_continuous("Read counts") +
+  scale_fill_manual("", values = c("bedtools" = "darksalmon", "mosdepth" = "#56B4E9")) +
+  ggtitle("Tools comparison - Exon 9b") +
+  theme_light(base_size = 12) +
+  scale_x_discrete(guide = guide_axis(angle = -35)) +
+  theme(axis.title.x=element_blank())
+
+#ggplotly()
+## save plot
+ggsave("Read_counts_9b_tool_comparison.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+
+
+
+```{r}
+### heatmap with continuos delta THRA1vsA2 using mosdepth
+heatmap_data <- filter(dataset_final, Package == "mosdepth")
+
+ggplot(heatmap_data, aes(1, reorder(Sample,delta_A1vsA2), fill=delta_A1vsA2)) +
+  geom_tile()+
+  ggtitle("THRA isoform expression pattern (THRA1/THRA2) - mosdepth") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  scale_fill_gradient2('delta_reads', limits=c(-350, 350), breaks = c( -350, -150, 0, 150, 350),  low = "#56B4E9", high = "darksalmon", guide="colorbar")
+
+ggsave("Heatmap_THRA1vsA2_mosdepth.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+```{r}
+### heatmap of percentages using mosdepth
+heatmap_data <- filter(dataset_final, Package == "mosdepth")
+
+ggplot(heatmap_data, aes(1, reorder(Sample,THRA1_Percentage), fill=THRA1_Percentage)) +
+  geom_tile()+
+  ggtitle("THRA isoform expression pattern (THRA1/THRA2) - mosdepth") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  scale_fill_gradient2('% of THRA1', limits=c(0, 100), breaks = c( 0, 50, 100),  low = "#56B4E9", high = "darksalmon", guide="colorbar",  midpoint = 50)
+
+ggsave("Heatmap_THRA1vsA2_mosdepth_percentages.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+```{r}
+### Lets plot the percentage in a different way, so that the actual percentage is visible
+
+heatmap_data_percentage <- filter(dataset_final, Package == "mosdepth")
+heatmap_data_percentage <- heatmap_data_percentage[order(heatmap_data_percentage$delta_percentage), ]  # sort
+heatmap_data_percentage$Sample <- factor(heatmap_data_percentage$Sample, levels = heatmap_data_percentage$Sample)  # convert to factor to retain sorted order in plot.
+
+
+# Diverging Barcharts
+ggplot(heatmap_data_percentage, aes(x=Sample, y=THRA1_Percentage, label=THRA1_Percentage)) + 
+  geom_bar(stat='identity', aes(fill=THRA1_higher), width=.5)  +
+   theme_light(base_size = 12)+
+  scale_fill_manual(name="Predominant Isoform", 
+                    labels = c("THRA1", "THRA2"), 
+                    values = c("TRUE"="darksalmon", "FALSE"="#56B4E9")) + 
+  scale_y_continuous("% THRA1" ,limits=c(0, 100))+ 
+  geom_hline(yintercept=50, linetype="dashed", color = "black")+
+  labs(subtitle="Percentage of THRA1 expression over the total of THRA", 
+       title= "THRA isoform expression pattern - Mosdepth",
+       caption = "~58M uniquely mapped reads, n=1") +  
+    theme(axis.title.y=element_blank()) +
+  coord_flip()
+
+ggsave("THRA1vsA2_mosdepth_percentages.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+```{r}
+# Diverging Barcharts oh total THRA
+total_plot <- filter(dataset_final, Package == "mosdepth") %>%
+  select(Sample, "THRA1" = THRA1_Percentage,"THRA2" = THRA2_Percentage)
+
+total_plot <- total_plot[order(total_plot$THRA2), ]  # sort
+total_plot$Sample <- factor(total_plot$Sample, levels = total_plot$Sample)  # convert to factor to retain sorted order in plot.
+
+total_plot <- pivot_longer(total_plot, c("THRA1","THRA2"), names_to = "Isoform", values_to = "Expression")
+  
+
+
+ggplot(total_plot, aes(x=Sample, y=Expression, label=Isoform)) + 
+  geom_bar(stat='identity',position = "stack", aes(fill=Isoform), width=.5)  +
+   theme_light(base_size = 12)+
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  scale_y_continuous("" ,limits=c(0, 100))+ 
+  geom_hline(yintercept=50, linetype="dashed", color = "#DC4E3C")+
+  labs(subtitle="", 
+       title= "THRA isoform expression pattern - Mosdepth",
+       caption = "~62M uniquely mapped reads, n=1") + 
+    theme(axis.title.y=element_blank(), 
+          axis.text = element_text(size = 13.9),
+          plot.title = element_text(size = 16),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14)) +
+  coord_flip()
+
+
+
+
+ggsave("THRA1vsA2_mosdepth_percentages_new.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+
+```{r}
+# Diverging Barcharts
+ggplot(heatmap_data_percentage, aes(x=Sample, y=delta_percentage, label=delta_percentage)) + 
+  geom_bar(stat='identity', aes(fill=THRA1_higher), width=.5)  +
+   theme_light(base_size = 12)+
+  scale_fill_manual(name="Predominant Isoform", 
+                    labels = c("THRA1", "THRA2"), 
+                    values = c("TRUE"="darksalmon", "FALSE"="#56B4E9")) + 
+  scale_y_continuous("Delta THRA1-THRA2 in %" ,limits=c(-100, 100))+
+  labs(subtitle="Delta THRA1-THRA2 expressed in percentage", 
+       title= "THRA isoform expression pattern") + 
+    theme(axis.title.y=element_blank()) +
+  coord_flip()
+
+
+
+```
+
+
+```{r}
+### heatmap with continuos delta THRA1vsA2 using bedtools
+heatmap_data <- filter(dataset_final, Package == "bedtools")
+
+ggplot(heatmap_data, aes(1, reorder(Sample,delta_A1vsA2), fill=delta_A1vsA2)) +
+  geom_tile()+
+  ggtitle("THRA isoform expression pattern (THRA1/THRA2) - bedtools") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  scale_fill_gradient2('delta_reads', limits=c(-350, 350), breaks = c( -350, -150, 0, 150, 350),  low = "#56B4E9", high = "darksalmon", guide="colorbar")
+
+ggsave("Heatmap_THRA1vsA2_bedtools.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+
+```{r}
+### heatmap with AUT AUT delta THRA1vsA2 using mosdepth
+heatmap_data <- filter(dataset_final, Package == "mosdepth")
+
+ggplot(heatmap_data, aes(1, reorder(Sample,delta_A1vsA2), fill=THRA1_higher)) +
+  geom_tile()+
+  ggtitle("THRA isoform expression pattern (THRA1/THRA2) - mosdepth") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  scale_fill_manual(values = c("TRUE"= "darksalmon", "FALSE" = "#56B4E9"))
+
+ggsave("Heatmap_THRA1vsA2_AUT_AUT_mosdepth.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+```{r}
+### heatmap with AUT AUT delta THRA1vsA2 using bedtools
+heatmap_data <- filter(dataset_final, Package == "bedtools")
+
+ggplot(heatmap_data, aes(1, reorder(Sample,delta_A1vsA2), fill=THRA1_higher)) +
+  geom_tile()+
+  ggtitle("THRA isoform expression pattern (THRA1/THRA2) - bedtools") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank(),
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  scale_fill_manual(values = c("TRUE"= "darksalmon", "FALSE" = "#56B4E9"))
+
+ggsave("Heatmap_THRA1vsA2_AUT_AUT_bedtools.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+
+```{r}
+###Lets compare the methods
+
+ggplot(dataset_final, aes(Package, reorder(Sample,`delta_A1vsA2`) , fill=`delta_A1vsA2`)) +
+  geom_tile()+
+  ggtitle("Delta comparison between methods (THRA1/THRA2)") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank()) +
+  theme(axis.title.x=element_blank()) +
+  scale_fill_gradient2('delta', breaks = c(-230, 0,  250),  low = "#56B4E9", high = "darksalmon", guide="colorbar")
+
+
+ggsave("Heatmap_methods_comparison.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+```{r}
+### Calulations with the STRINGTIE ouput
+
+path_plots_stringtie <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/StringTie_TPM_outputs/plots"
+
+##Load StringTie outputs
+
+file_links_stringtie <- list.files(path= "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/StringTie_TPM_outputs" , pattern = "*.txt", full.names=T)
+
+
+# initialize an empty dataframe
+data_stringtie <- data_frame("Sample"=character(),
+                   "gene_id"=character(),
+                   "transcript_id"=character(),
+                   "gene_name"=character(),
+                   "coverage"=character(),
+                   "FPKM"=character(),
+                   "TPM"=character())
+
+for (x in file_links_stringtie) {
+  
+  basename_sample <- str_remove(basename(x), "_Aligned.out.stringtie_THRA_isoforms.txt")  ## get the sample name from the file path
+  table_sample <- read.delim(x, header = FALSE) ## read table
+  
+  table_sample <- table_sample %>%
+    separate_wider_delim("V1", delim = ";", names = c("V1", "V2", "V3", "V4", "V5", "V6", "V7")) %>%
+    select(-"V7") %>%
+    separate_wider_delim("V1", delim = " ", names = c("Vx", "gene_id")) %>%
+    select(-"Vx")%>%
+    separate_wider_delim("V2", delim = " ", names = c("Vx", "Vy","transcript_id"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V3", delim = " ", names = c("Vx", "Vy","gene_name"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V4", delim = " ", names = c("Vx", "Vy","coverage"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V5", delim = " ", names = c("Vx", "Vy","FPKM"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V6", delim = " ", names = c("Vx", "Vy","TPM"), too_many = "merge") %>%
+    select(-"Vx", -"Vy") %>%
+    mutate("Sample"=basename_sample, .before = "gene_id" )
+  
+
+  data_stringtie <- bind_rows(data_stringtie, table_sample)
+  
+}
+
+## adjust the classes
+data_stringtie$Sample <- as.character(data_stringtie$Sample)
+data_stringtie$gene_id <- as.factor(data_stringtie$gene_id)
+data_stringtie$transcript_id <- as.factor(data_stringtie$transcript_id)
+data_stringtie$coverage <- as.double(data_stringtie$coverage)
+data_stringtie$FPKM <- as.double(data_stringtie$FPKM)
+data_stringtie$TPM <- as.double(data_stringtie$TPM)
+
+data_stringtie
+```
+
+
+```{r}
+## Let's add a column that specifies the name of the known isoforms
+
+data_stringtie <- data_stringtie %>%
+  mutate(isoform = ifelse(str_starts(transcript_id, "ENST00000450525") | str_starts(transcript_id, "ENST00000546243"), "THRA1", ifelse(str_starts(transcript_id, "ENST00000264637") | str_starts(transcript_id, "ENST00000584985"), "THRA2", "Other")))
+
+data_stringtie$isoform <- as.factor(data_stringtie$isoform)
+data_stringtie
+```
+## single plots of each sample
+```{r}
+for (file in unique(data_stringtie$Sample)) {
+  
+
+df_plot_single <-filter(data_stringtie, Sample == file)
+
+ggplot(df_plot_single, aes(x=transcript_id, y=TPM, label=isoform)) + 
+  geom_bar(stat='summary', position = "stack", aes(fill=isoform), width=.5)  +
+   theme_light(base_size = 14)+
+  scale_y_continuous("TPM") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= as.character(file),
+       caption = "")+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_", as.character(file),".png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+}
+```
+
+
+## Graphs to compare all the tissues together
+
+```{r}
+
+df_plot_all_samples <-  select(data_stringtie, Sample, isoform,TPM) %>%
+  filter(isoform != "Other") %>%
+  group_by(Sample, isoform) %>%
+  mutate(total_TPM = sum(TPM)) ## sum of all THRA1 isoforms and all THRA2 isoforms together
+
+df_plot_all_samples <-  df_plot_all_samples %>%
+  group_by(Sample) %>%
+  mutate(total_THRA = sum(TPM)) # THRA expression in total
+
+df_plot_all_samples <-  df_plot_all_samples %>%
+  group_by(Sample) %>%
+  mutate(delta_A1 = ifelse(isoform=="THRA2", total_THRA - total_TPM, NA)) %>% # This is TPM for A1
+  mutate(delta=total_TPM-delta_A1) ## This is the difference THRA2-THRA1
+
+df_plot_all_samples <- df_plot_all_samples[order(df_plot_all_samples$delta), ]  # sort
+
+
+clean_data <- df_plot_all_samples %>%
+  filter(isoform == "THRA2") %>%
+  select(Sample, THRA1 = total_TPM, THRA2 = delta_A1, delta) %>%
+  unique()
+
+write.csv(clean_data, "clean_data.csv")
+####
+
+
+ggbarplot(df_plot_all_samples, x = "Sample", y = "total_TPM", add = "mean_se",
+          fill = "isoform") +
+  scale_fill_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="TAKARA - StringTie", 
+       title= paste0(""),
+       caption = "~62M uniquely mapped reads") +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+
+#  geom_vline(xintercept="A15_stomach", linetype="dashed", color = "red")+
+  scale_y_continuous("Transcripts per Million (TPM)")+ 
+    theme(axis.title.y=element_blank(), 
+          axis.text = element_text(size = 13.9),
+          plot.title = element_text(size = 16),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_all_samples.png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(readr)
+data_stringtie <- read_csv("Old analysis/DESeq2_analysis_old/transcript_count_matrix.csv")
+
+stringtie_iso_1 <- filter(data_stringtie, transcript_id == "ENST00000450525.7")%>%
+  select(-transcript_id)
+
+stringtie_iso_1
+
+stringtie_iso_1 <- as.data.frame(t(stringtie_iso_1)) 
+stringtie_iso_1 <- mutate(stringtie_iso_1, "Sample"=rownames(stringtie_iso_1), "THRA1" = V1) %>%
+  select(-V1)
+
+stringtie_iso_1
+
+
+
+stringtie_iso_2 <- filter(data_stringtie, transcript_id == "ENST00000264637.8")%>%
+  select(-transcript_id)
+
+stringtie_iso_2 <- as.data.frame(t(stringtie_iso_2)) ## to transpose the dataframe
+stringtie_iso_2 <- mutate(stringtie_iso_2, "Sample"=rownames(stringtie_iso_2), "THRA2" = V1) %>%
+  select(-V1)
+
+
+data_stringtie_filtered <- inner_join(stringtie_iso_1, stringtie_iso_2) %>%
+  mutate("Package" = as.factor("stringtie"))%>%
+  relocate(Package, .after=Sample)
+
+
+##Add calculations as for the other methods
+
+data_stringtie_filtered <- data_stringtie_filtered%>%
+  mutate("THRA1_Percentage" = round(THRA1/(THRA1+THRA2)*100)) %>%
+  mutate("THRA2_Percentage" = round(100-THRA1_Percentage)) %>%
+  mutate("THRA1_higher" = THRA1 > THRA2) %>%
+  mutate("delta_percentage" = THRA1_Percentage - THRA2_Percentage)
+
+data_stringtie_filtered
+  
+```
+```{r}
+### Lets make the same bar plots to show the precentages
+
+data_stringtie_filtered <- data_stringtie_filtered[order(data_stringtie_filtered$delta_percentage), ]  # sort
+data_stringtie_filtered$Sample <- factor(data_stringtie_filtered$Sample, levels = data_stringtie_filtered$Sample)  # convert to factor to retain sorted order in plot.
+
+
+# Diverging Barcharts
+ggplot(data_stringtie_filtered, aes(x=Sample, y=THRA1_Percentage, label=THRA1_Percentage)) + 
+  geom_bar(stat='identity', aes(fill=THRA1_higher), width=.5)  +
+   theme_light(base_size = 12)+
+  scale_fill_manual(name="Predominant Isoform", 
+                    labels = c("THRA1", "THRA2"), 
+                    values = c("TRUE"="darksalmon", "FALSE"="#56B4E9")) + 
+  scale_y_continuous("% THRA1" ,limits=c(0, 100))+ 
+  geom_hline(yintercept=50, linetype="dashed", color = "black")+
+  labs(subtitle="Percentage of THRA1 expression over the total of THRA", 
+       title= "THRA isoform expression pattern - StringTie",
+       caption = "~58M uniquely mapped reads, n=1") +  
+    theme(axis.title.y=element_blank()) +
+  coord_flip()
+
+ggsave("THRA1vsA2_StringTie_percentages.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+```{r}
+# Diverging Barcharts oh total THRA
+total_plot <- data_stringtie_filtered %>%
+  select(Sample, "THRA1" = THRA1_Percentage,"THRA2" = THRA2_Percentage)
+
+total_plot <- total_plot[order(total_plot$THRA2), ]  # sort
+total_plot$Sample <- factor(total_plot$Sample, levels = total_plot$Sample)  # convert to factor to retain sorted order in plot.
+
+total_plot <- pivot_longer(total_plot, c("THRA1","THRA2"), names_to = "Isoform", values_to = "Expression")
+  
+
+
+ggplot(total_plot, aes(x=Sample, y=Expression, label=Isoform)) + 
+  geom_bar(stat='identity',position = "stack", aes(fill=Isoform), width=.5)  +
+   theme_light(base_size = 12)+
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  scale_y_continuous("" ,limits=c(0, 100))+ 
+  geom_hline(yintercept=50, linetype="dashed", color = "#DC4E3C")+
+  labs(subtitle="", 
+       title= "THRA isoform expression pattern - StringTie",
+       caption = "~62M uniquely mapped reads, n=1") + 
+    theme(axis.title.y=element_blank(), 
+          axis.text = element_text(size = 13.9),
+          plot.title = element_text(size = 16),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14)) +
+  coord_flip()
+
+
+
+
+ggsave("THRA1vsA2_StringTie_percentages_new.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+
+
+```{r}
+###Lets compare the StringTie vs Mosdepth
+comparison_mosdepth <- filter(dataset_final, Package == "mosdepth") %>%
+  select(Sample, Package,delta_percentage, THRA1_Percentage, THRA2_Percentage, THRA1_higher )
+
+comparison_stringtie <- select(data_stringtie_filtered, Sample, Package, delta_percentage, THRA1_Percentage, THRA2_Percentage, THRA1_higher)
+
+comparison_merged <- bind_rows(comparison_stringtie, comparison_mosdepth)
+
+ggplot(comparison_merged, aes(Package, reorder(Sample,`delta_percentage`) , fill=`delta_percentage`)) +
+  geom_tile()+
+  labs(subtitle="Delta of THRA1 and THRA2 expressed in percentage", 
+       title= "Comparison between StringTie and Mosdepth",
+       caption = "")+
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank()) +
+  theme(axis.title.x=element_blank()) +
+  scale_fill_gradient2('Delta (%)', breaks = c(-50, 0, 50),  low = "#56B4E9", high = "darksalmon", guide="colorbar")
+
+
+ggsave("Heatmap_comparison_stringtie_mosdepth.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+```
+
+
+```{r}
+
+# Lets compare the StringTie vs Mosdepth with barchart
+ggplot(comparison_merged, aes(x=reorder(Sample,`delta_percentage`), y=THRA1_Percentage, label=Package)) + 
+  geom_bar(stat='identity',position = "dodge", aes(fill=Package), width=.5)  +
+   theme_light(base_size = 12)+
+  scale_fill_manual(name="Method", 
+                    labels = c( "mosdepth", "stringtie"), 
+                    values = c("mosdepth"="#5A7C86", "stringtie"="#A2D2DB")) + 
+  scale_y_continuous("% THRA1" ,limits=c(0, 100))+ 
+  geom_hline(yintercept=50, linetype="dashed", color = "black")+
+  labs(subtitle="Percentage of THRA1 expression over the total of THRA", 
+       title= "Comparison between StringTie and Mosdepth",
+       caption = "") + 
+    theme(axis.title.y=element_blank()) +
+  coord_flip()
+
+
+ggsave("Heatmap_comparison_stringtie_mosdepth_barchart.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+```
+
+## Analyze the featureCounts outputs
+
+### Get the scaling factor
+```{r}
+## get the scaling factor from all the gene counts
+
+df_all_genes <- read.delim("/Users/eugeniograceffo/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/featureCounts_outputs/featureCounts_output_all_genes.txt", header = TRUE, skip=1) ## read table
+
+# TPM is defined as: Fragment counts / gene length in Kb / sum of RPK per million
+
+## Let's first calculate the gene length in kb
+df_all_genes_RPK <- df_all_genes %>%
+  select(-Chr, -Start, -End, -Strand) %>%
+  mutate(length_kb = df_all_genes$Length/1000 , .after = "Length") # calculate length in kb
+
+rownames(df_all_genes_RPK) <- df_all_genes_RPK$Geneid %>%
+  str_remove_all("_Aligned.out.sorted.bam")
+
+## Let's calculate the read per kilobase (RPK)
+df_all_genes_RPK <- df_all_genes_RPK %>%
+  select(-Geneid) %>%
+   mutate(across(where(is.numeric), ~ .x/`length_kb`)) %>% # normalizes against read length in kb
+  select(-Length, -length_kb)
+
+  
+## Let's calculate the per million scaling factor
+df_all_genes_scaling <- as.data.frame(t(df_all_genes_RPK)) # transpose the dataframe
+
+rownames(df_all_genes_scaling) <- rownames(df_all_genes_scaling) %>%
+  str_remove_all("_Aligned.out.sorted.bam")
+
+df_all_genes_scaling <- df_all_genes_scaling %>%
+  mutate(scaling_factor = rowSums(across(where(is.numeric)))/1000000) 
+
+
+## Let's finally calculate the transcripts per million (TPM)
+df_all_genes_TPM <- df_all_genes_scaling %>%
+   mutate(across(where(is.numeric), ~ .x/`scaling_factor`)) # value/M of reads
+
+
+```
+
+### Calculate THRA isoforms based on nucleotide and exon
+```{r}
+df_THRA_isoforms <- read.delim("/Users/eugeniograceffo/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/featureCounts_outputs/featureCounts_output_THRA_isoforms.txt", header = TRUE, skip=1) ## read table
+
+# TPM is defined as: Fragment counts / gene length in Kb / sum of FPK per million
+
+## Let's first calculate the gene length in kb
+df_THRA_isoforms_RPK <- df_THRA_isoforms %>%
+  select(-Chr, -Start, -End, -Strand) %>%
+  mutate(length_kb = df_THRA_isoforms$Length/1000 , .after = "Length") # calculate length in kb
+
+rownames(df_THRA_isoforms_RPK) <- df_THRA_isoforms_RPK$Geneid %>%
+  str_remove_all("_Aligned.out.sorted.bam")
+
+## Let's calculate the read per kilobase (RPK)
+df_THRA_isoforms_RPK <- df_THRA_isoforms_RPK %>%
+  select(-Geneid) %>%
+   mutate(across(where(is.numeric), ~ .x/`length_kb`)) %>% # normalizes against read length in kb
+  select(-Length, -length_kb)
+
+  
+## Let's import the per million scaling factor from the "all genes" dataframe
+df_THRA_isoforms_scaling <- as.data.frame(t(df_THRA_isoforms_RPK)) # transpose the dataframe
+
+rownames(df_THRA_isoforms_scaling) <- rownames(df_THRA_isoforms_scaling) %>%
+  str_remove_all("_Aligned.out.sorted.bam")
+
+scaling_df <- select(df_all_genes_scaling, scaling_factor)
+  
+scaling_df <-mutate(scaling_df, Sample = rownames(scaling_df))
+
+df_THRA_isoforms_scaling <- df_THRA_isoforms_scaling %>%
+  mutate(Sample=rownames(df_THRA_isoforms_scaling)) %>%
+  inner_join(scaling_df) 
+
+rownames(df_THRA_isoforms_scaling) <- df_THRA_isoforms_scaling$Sample
+
+
+## Let's finally calculate the transcripts per million (TPM)
+df_THRA_isoforms_TPM <- df_THRA_isoforms_scaling %>%
+   mutate(across(where(is.numeric), ~ .x/`scaling_factor`)) %>% # value/M of reads
+  select(-scaling_factor)
+
+```
+
+## Lets calculate the FPKM as well
+```{r}
+## Let's first calculate the gene length in kb
+df_THRA_isoforms_RPM <- df_THRA_isoforms %>%
+  select(-Chr, -Start, -End, -Strand) %>%
+  mutate(length_kb = df_THRA_isoforms$Length/1000 , .after = "Length") %>% # calculate length in kb
+  rename(Sample=Geneid)
+
+rownames(df_THRA_isoforms_RPM) <- df_THRA_isoforms_RPM$Sample %>%
+  str_remove_all("_Aligned.out.sorted.bam")
+
+read_length_df <- select(df_THRA_isoforms_RPM, Sample, length_kb) 
+
+  
+## Let's import the per million scaling factor from the "depth" dataframe
+df_THRA_isoforms_scaling_2 <- df_THRA_isoforms_RPM %>%
+  select(-Sample, -length_kb, -Length)
+
+df_THRA_isoforms_scaling_2 <- as.data.frame(t(df_THRA_isoforms_scaling_2)) # transpose the dataframe
+
+rownames(df_THRA_isoforms_scaling_2) <- rownames(df_THRA_isoforms_scaling_2) %>%
+  str_remove_all("_Aligned.out.sorted.bam")
+
+
+
+df_THRA_isoforms_scaling_2 <- df_THRA_isoforms_scaling_2 %>%
+  mutate(Sample=rownames(df_THRA_isoforms_scaling_2)) %>%
+  inner_join(depth) 
+
+rownames(df_THRA_isoforms_scaling_2) <- df_THRA_isoforms_scaling_2$Sample
+
+## Let's calculate the read per million (RPM)
+df_THRA_isoforms_RPM <- df_THRA_isoforms_scaling_2 %>%
+   mutate(across(where(is.numeric), ~ .x/`M Aligned`)) %>% # value/M of reads
+  select(-`M Aligned`)
+
+## Let's finally calculate the FPKM 
+df_THRA_isoforms_FPKM <- select(df_THRA_isoforms_RPM, -Sample)
+df_THRA_isoforms_FPKM <- as.data.frame(t(df_THRA_isoforms_FPKM)) # transpose the dataframe
+
+
+df_THRA_isoforms_FPKM <- df_THRA_isoforms_FPKM %>%
+  mutate(Sample=rownames(df_THRA_isoforms_FPKM)) %>%
+  inner_join(read_length_df) 
+
+df_THRA_isoforms_FPKM <- df_THRA_isoforms_FPKM %>%
+   mutate(across(where(is.numeric), ~ .x/`length_kb`))  # normalizes against read length in kb
+
+  
+rownames(df_THRA_isoforms_FPKM) <- df_THRA_isoforms_FPKM$Sample
+
+df_THRA_isoforms_FPKM <- select(df_THRA_isoforms_FPKM, -Sample, -length_kb)
+  
+df_THRA_isoforms_FPKM <- as.data.frame(t(df_THRA_isoforms_FPKM)) # transpose the dataframe
+
+df_THRA_isoforms_FPKM$Sample <- rownames(df_THRA_isoforms_FPKM)
+
+
+
+```
+
+Let's bind the dataframes together so we can make calculations just once
+```{r}
+df_THRA_isoforms_FPKM$Value <- as.factor("FPKM")
+df_THRA_isoforms_TPM$Value <- as.factor("TPM")
+
+df_THRA_isoforms_total <- bind_rows(df_THRA_isoforms_FPKM, df_THRA_isoforms_TPM)
+rownames(df_THRA_isoforms_total) <- NULL
+
+## Calculations
+df_THRA_isoforms_total_final <- df_THRA_isoforms_total %>%
+  mutate(THRA1_nucleotide = df_THRA_isoforms_total$'9b_nucleotide', .after= '9b_nucleotide') %>%
+  mutate(THRA2_nucleotide = df_THRA_isoforms_total$'9a_nucleotide'-df_THRA_isoforms_total$'9b_nucleotide' , .after= 'THRA1_nucleotide') %>%
+  mutate(delta_nucleotide = THRA2_nucleotide - THRA1_nucleotide, .after = THRA2_nucleotide) %>%
+  mutate(delta_nucleotide_new = df_THRA_isoforms_total$'9a_nucleotide' - THRA1_nucleotide, .after = delta_nucleotide) %>%
+  mutate(THRA2_higher_nucleotide = delta_nucleotide > 0, .after = delta_nucleotide_new) %>%
+  mutate(THRA2_higher_nucleotide_new = delta_nucleotide_new > 0, .after = THRA2_higher_nucleotide) %>%
+  mutate(delta_exon_short = Exon_10 - Exon_9b_short, .after = Exon_9b_short) %>%
+  mutate(THRA2_higher_exon_short = delta_exon_short >0, .after = delta_exon_short)%>%
+  mutate(delta_exon_long = Exon_10 - Exon_9b_long, .after = Exon_9b_long) %>%
+  mutate(THRA2_higher_exon_long = delta_exon_long >0, .after = delta_exon_long)
+
+df_THRA_isoforms_total_final
+
+```
+
+# Let' graph some results
+```{r}
+### Let's Exons -> TPM vs FPKM
+total_plot_comparison_FPKM <-  df_THRA_isoforms_total_final %>%
+  filter(Value== "FPKM") %>%
+  select(Sample, delta_nucleotide_FPKM = delta_nucleotide, delta_nucleotide_new_FPKM = delta_nucleotide_new, delta_exon_short_FPKM = delta_exon_short , delta_exon_long_FPKM= delta_exon_long)
+
+total_plot_comparison_TPM <-  df_THRA_isoforms_total_final %>%
+  filter(Value== "TPM") %>%
+  select(Sample, delta_nucleotide_TPM = delta_nucleotide, delta_nucleotide_new_TPM = delta_nucleotide_new, delta_exon_short_TPM = delta_exon_short , delta_exon_long_TPM= delta_exon_long)
+
+### Data from StringTie
+total_plot_comparison_StringTie <- df_plot_all_samples %>%
+  select(Sample, delta_StringTie_TPM = delta) %>%
+  unique() %>%
+  na.omit()
+
+## bind together
+total_plot_comparison <- inner_join(total_plot_comparison_FPKM, total_plot_comparison_TPM) %>%
+  inner_join(total_plot_comparison_StringTie)
+
+
+
+total_plot_comparison <- total_plot_comparison[order(total_plot_comparison$delta_StringTie_TPM), ]  # sort
+total_plot_comparison$Sample <- factor(total_plot_comparison$Sample, levels = total_plot_comparison$Sample)  # convert to factor to retain sorted order in plot.
+
+total_plot_comparison_exons <- total_plot_comparison %>%
+  pivot_longer(c( "delta_exon_short_FPKM", "delta_exon_long_FPKM",  "delta_exon_short_TPM", "delta_exon_long_TPM", "delta_StringTie_TPM"), names_to = "Method", values_to = "Delta")
+
+
+ggplot(total_plot_comparison_exons, aes(Method, Sample , fill=Delta)) +
+  geom_tile()+
+  ggtitle("Delta comparison between methods (THRA2-THRA1)") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank()) +
+  theme(axis.title.x=element_blank()) +
+  scale_x_discrete(guide = guide_axis(angle = 45))+
+  scale_fill_gradient2("Delta", breaks = c(ceiling(min(total_plot_comparison_exons$Delta)), 0,  floor(max(total_plot_comparison_exons$Delta))),  low = "#56B4E9", high = "darksalmon", guide="colorbar")
+
+
+
+
+#ggsave("Heatmap_comparison_nucleotide_vs_exon_AUT_AUT.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+```{r}
+ggplot(total_plot_comparison_exons, aes(Method, Sample , fill=Delta)) +
+  geom_tile()+
+  ggtitle("Delta comparison between methods (THRA2-THRA1)") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank()) +
+  theme(axis.title.x=element_blank()) +
+  scale_x_discrete(guide = guide_axis(angle = 45))+
+  scale_fill_gradient2("Delta", breaks = c(ceiling(min(total_plot_comparison_exons$Delta)), 0,  floor(max(total_plot_comparison_exons$Delta))),  low = "#56B4E9", high = "darksalmon", guide="colorbar")
+```
+
+```{r}
+total_plot_comparison_all <- total_plot_comparison %>%
+  pivot_longer(c("delta_nucleotide_FPKM", "delta_exon_short_FPKM", "delta_exon_long_FPKM", "delta_nucleotide_TPM",  "delta_exon_short_TPM", "delta_exon_long_TPM", "delta_StringTie_TPM"), names_to = "Method", values_to = "Delta")
+
+total_plot_comparison_AUT <-  mutate(total_plot_comparison_all, Delta = Delta >0)
+
+ggplot(total_plot_comparison_AUT, aes(Method, Sample , fill=Delta)) +
+  geom_tile()+
+  ggtitle("Delta comparison between methods (THRA2-THRA1)") +
+  theme_light(base_size = 12)+
+  theme(axis.title.y=element_blank()) +
+  theme(axis.title.x=element_blank()) +
+  scale_x_discrete(guide = guide_axis(angle = 45))+
+  scale_fill_manual('THRA2 more expressed?', values = c("TRUE"= "darksalmon", "FALSE" = "#56B4E9"))
+```
+
+
+
+
+
+
+
+
