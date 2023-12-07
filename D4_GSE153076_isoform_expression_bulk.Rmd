@@ -1,0 +1,320 @@
+---
+title: "THRA Isoform 1 and Isoform 2 Expression pattern and exploration of dataset"
+output:
+  html_document:
+    toc: True
+    toc_float: True
+    df_print: paged
+---
+
+INTRODUCTION to the Experiment
+
+GEO_GSE153076. Organoids generated from 3 replicate batches of H9 and G1 cell lines were collected at 7 time points for bulk RNA-seq analysis: 0, 2, 3, 5, 10, 15 and 25 days post neural induction. ~300 organoids per replicate were collected at the time points ranging between day 0 and 5, ~150 organoids at day 10, ~100 organoids at day 15, and ~50 organoids at day 25.
+
+```{r}
+#load libraries
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(plotly)
+library(matrixStats)
+library(ggrepel)
+library(scales)
+library(readxl)
+library(dplyr)
+library(ggpubr)
+
+```
+
+
+```{r}
+## set paths for output figure
+path_plots <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/GEO_GSE153076/Figures/Expression_pattern"
+
+
+## load metadata file
+
+metadata <- read_delim("metadata_GSE153076.txt")
+
+metadata <- metadata %>%
+  select(Sample=Run, Organism, Time_point, Batch)
+
+## load sequencing depth for normalization
+
+depth <- read_delim("Sequencing_depth.txt")
+
+depth <- depth %>%
+  select(Sample, "M Aligned", "M Seqs")
+
+
+```
+
+
+
+
+```{r}
+### Calulations with the STRINGTIE ouput - new
+
+path_plots_stringtie <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/GEO_GSE153076/StringTie_TPM_outputs/plots"
+
+
+##Load StringTie outputs
+
+file_links_stringtie <- list.files(path= "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/GEO_GSE153076/StringTie_TPM_outputs" , pattern = "*.txt", full.names=T)
+
+
+# initialize an empty dataframe
+data_stringtie <- data_frame("Sample"=character(),
+                   "gene_id"=character(),
+                   "transcript_id"=character(),
+                   "gene_name"=character(),
+                   "coverage"=character(),
+                   "FPKM"=character(),
+                   "TPM"=character())
+
+
+for (x in file_links_stringtie) {
+  
+  basename_sample <- sub("\\_.*", "", basename(x))  ## get the sample name from the file path
+  table_sample <- read.delim(x, header = FALSE) ## read table
+  
+  table_sample <- table_sample %>%
+    separate_wider_delim("V1", delim = ";", names = c("V1", "V2", "V3", "V4", "V5", "V6", "V7")) %>%
+    select(-"V7") %>%
+    separate_wider_delim("V1", delim = " ", names = c("Vx", "gene_id")) %>%
+    select(-"Vx")%>%
+    separate_wider_delim("V2", delim = " ", names = c("Vx", "Vy","transcript_id"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V3", delim = " ", names = c("Vx", "Vy","gene_name"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V4", delim = " ", names = c("Vx", "Vy","coverage"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V5", delim = " ", names = c("Vx", "Vy","FPKM"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V6", delim = " ", names = c("Vx", "Vy","TPM"), too_many = "merge") %>%
+    select(-"Vx", -"Vy") %>%
+    mutate("Sample"=basename_sample, .before = "gene_id" )
+  
+
+  data_stringtie <- bind_rows(data_stringtie, table_sample)
+  
+}
+
+## adjust the classes
+data_stringtie$Sample <- as.character(data_stringtie$Sample)
+data_stringtie$gene_id <- as.factor(data_stringtie$gene_id)
+data_stringtie$transcript_id <- as.factor(data_stringtie$transcript_id)
+data_stringtie$coverage <- as.double(data_stringtie$coverage)
+data_stringtie$FPKM <- as.double(data_stringtie$FPKM)
+data_stringtie$TPM <- as.double(data_stringtie$TPM)
+
+data_stringtie
+```
+
+
+# Let's add in the metadata information and graph the results per timepoint
+```{r}
+### let's fill in with the metadata
+data_stringtie <- inner_join(metadata, data_stringtie, by ="Sample") 
+
+df_human <- data_stringtie %>%
+  filter(Organism == "Homo sapiens")
+
+df_gorilla <- data_stringtie %>%
+  filter(Organism == "Gorilla gorilla")
+
+```
+
+```{r}
+## Let's add a column that specifies the name of the known isoforms
+
+df_human <- df_human %>%
+  mutate(isoform = ifelse(str_starts(transcript_id, "ENST00000450525") | str_starts(transcript_id, "ENST00000546243"), "THRA1", ifelse(str_starts(transcript_id, "ENST00000264637") | str_starts(transcript_id, "ENST00000584985"), "THRA2", "Other")))
+
+df_human$isoform <- as.factor(df_human$isoform)
+df_human
+
+
+
+df_gorilla <- df_gorilla %>%
+
+  mutate(isoform = ifelse(str_starts(transcript_id, "XM_019026893.2"), "THRA1", ifelse(str_starts(transcript_id, "THRA2"), "THRA2", "Other")))
+
+df_gorilla$isoform <- as.factor(df_gorilla$isoform)
+df_gorilla
+```
+
+## single plots of each sample human
+```{r}
+for (file in unique(df_human$Sample)) {
+  
+
+df_plot_single <-filter(df_human, Sample == file)
+
+ggplot(df_plot_single, aes(x=transcript_id, y=TPM, label=isoform)) + 
+  geom_bar(stat='summary', position = "stack", aes(fill=isoform), width=.5)  +
+   theme_light(base_size = 14)+
+  scale_y_continuous("TPM") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= paste0(as.character(file),"_Human" ),
+       caption = "")+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_", as.character(file),"_human" , ".png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+}
+```
+
+## single plots of each sample human
+```{r}
+for (file in unique(df_gorilla$Sample)) {
+  
+
+df_plot_single <-filter(df_gorilla, Sample == file)
+
+ggplot(df_plot_single, aes(x=transcript_id, y=TPM, label=isoform)) + 
+  geom_bar(stat='summary', position = "stack", aes(fill=isoform), width=.5)  +
+   theme_light(base_size = 14)+
+  scale_y_continuous("TPM") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= paste0(as.character(file),"_Gorilla" ),
+       caption = "")+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_", as.character(file),"_gorilla" , ".png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+}
+```
+
+
+## Calclulate TPM for total THRA1 and total THRA2
+```{r}
+df_human <-  select(df_human, Sample, Organism, "study_day" = Time_point, isoform,TPM) %>%
+  filter(isoform != "Other") %>%
+  group_by(Sample, isoform) %>%
+  mutate(total_TPM = sum(TPM)) %>% ## sum of all THRA1 isoforms and all THRA2 isoforms together
+  select(-TPM) %>%
+  unique()
+
+
+df_gorilla <-  select(df_gorilla, Sample, Organism, "study_day" = Time_point, isoform,TPM) %>%
+  mutate(total_TPM = TPM) %>% 
+  select(-TPM) %>%
+  unique()
+
+
+```
+
+
+
+
+
+
+
+```{r}
+ggbarplot(df_human, x = "study_day", y = "total_TPM", add = "mean_se",
+          fill = "isoform") +
+  scale_fill_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="Human cortical organoids - Lancaster dataset - StringTie", 
+       title= paste0(""),
+       caption = "Mean +- SEM, n=3 \n ~20M uniquely mapped reads") +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+
+  scale_y_continuous("Transcripts per Million (TPM)", limits = c(0,80))+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+ggsave("THRA1_THRA2_over_time_organoids_stacked_with_error_bars_STRINGTIE_Lancaster_human.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+```{r}
+ggbarplot(df_gorilla, x = "study_day", y = "total_TPM", add = "mean_se",
+          fill = "isoform") +
+  scale_fill_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="Gorilla cortical organoids - Lancaster dataset - StringTie", 
+       title= paste0(""),
+       caption = "Mean +- SEM, n=3 \n ~20M uniquely mapped reads") +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+
+  scale_y_continuous("Transcripts per Million (TPM)", limits = c(0,80))+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+ggsave("THRA1_THRA2_over_time_organoids_stacked_with_error_bars_STRINGTIE_Lancaster_gorilla.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+```{r}
+df_total_plot <- bind_rows(df_gorilla, df_human)
+
+  ggline(df_human, x = "study_day", y = "total_TPM", add = "mean_se", color = "isoform" ) +
+  scale_color_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="Homo sapiens vs Gorilla gorilla", 
+       title= paste0(""),
+       caption = "Mean +- SEM, n=3 \n ~20M uniquely mapped reads") +
+  scale_y_continuous("Transcripts per Million (TPM)", limits = c(0,80)) +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+## save plot
+ggsave("Comparison_over_time_Human.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+```{r}
+df_total_plot <- bind_rows(df_gorilla, df_human)
+
+  ggline(df_gorilla, x = "study_day", y = "total_TPM", add = "mean_se", color = "isoform", linetype = "dashed" ) +
+  scale_color_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="Homo sapiens vs Gorilla gorilla", 
+       title= paste0(""),
+       caption = "Mean +- SEM, n=3 \n ~20M uniquely mapped reads") +
+  scale_y_continuous("Transcripts per Million (TPM)", limits = c(0,80)) +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+## save plot
+ggsave("Comparison_over_time_Gorilla.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+```{r}
+df_total_plot <- bind_rows(df_gorilla, df_human)
+
+  ggline(df_total_plot, x = "study_day", y = "total_TPM", add = "mean_se",  linetype = "Organism" ) +
+  scale_linetype_manual("", values = c("Gorilla gorilla"="dashed","Homo sapiens" = "solid")) +
+  labs(subtitle="Homo sapiens vs Gorilla gorilla", 
+       title= paste0(""),
+       caption = "Mean +- SEM, n=3 \n ~20M uniquely mapped reads") +
+  scale_y_continuous("Transcripts per Million (TPM)", limits = c(0,80)) +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+## save plot
+ggsave("Comparison_over_time_LEGEND.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+```

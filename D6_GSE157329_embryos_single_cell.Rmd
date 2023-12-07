@@ -1,0 +1,1037 @@
+---
+title: "scRNA-Seq Analysis of Embryos dataset from  Xu et al 2023"
+output: html_notebook
+---
+## Intro
+
+```{r}
+## Load libraries
+library(Seurat)
+library(harmony)
+library(ggplot2)
+library(SingleR)
+library(dplyr)
+library(patchwork)
+library(RColorBrewer)
+library(SingleCellExperiment)
+library(tidyverse)
+library(sctransform)
+
+## Set paths
+path_plots = "/home/data/Embryos_GSE157329/Seurat_code/outputs/figures"
+```
+
+```{r}
+## Load cell annotation file from publication
+annotation_pub <- read.table("/home/data/Embryos_GSE157329/Seurat_code/GSE157329_cell_annotate.txt", header = TRUE, sep = "\t")
+annotation_pub <- rename(annotation_pub, barcode_pub = barcode) # so that we can use it later
+```
+
+
+# Loading all the datasets separately and performing QC filtering
+
+## Embryo 1 - CS12 - male
+
+```{r}
+## Load dataset
+mat_embryo_1 <- Read10X("/home/data/Embryos_GSE157329/embryo_1/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_embryo_1 <- CreateSeuratObject(counts = mat_embryo_1, project = "embryo_1") 
+
+## save up RAM
+rm(mat_embryo_1) # saves RAM
+
+head(srat_embryo_1@meta.data)
+
+## mitochondrial contamination
+srat_embryo_1[["percent.mt"]] <- PercentageFeatureSet(srat_embryo_1, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_embryo_1[["percent.rb"]] <- PercentageFeatureSet(srat_embryo_1, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_embryo_1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+
+```{r}
+## transfer annotation and metadata information from annotation file of the publication
+annotation_pub_emb1 <- filter(annotation_pub, embryo == "emb1" & dissection_part == "head-upperTrunk")
+
+srat_embryo_1@meta.data$barcode <- rownames(srat_embryo_1@meta.data) # create column with barcodes so that it is easier to compare
+
+# for loop to add all columns present in the publication annotation file to the seurat object
+for (x in colnames(annotation_pub_emb1)) {
+  srat_embryo_1[[x]] <- annotation_pub_emb1[[x]][match(rownames(srat_embryo_1@meta.data), annotation_pub_emb1$barcode_pub)] 
+}
+
+srat_embryo_1$filter <- is.na(srat_embryo_1$barcode_pub) # creates a logical column with rows to be filtered
+head(srat_embryo_1@meta.data)
+
+## filter out cells that were filtered out in the publication
+srat_embryo_1_filtered <- subset(srat_embryo_1, subset = filter ==F) # filters out cells whose barcode was not present in the publictaion barcodes
+head(srat_embryo_1_filtered@meta.data)
+
+rm(srat_embryo_1) # saves RAM
+```
+
+## Embryo 2 - CS13/14 - female
+
+```{r}
+## Load dataset
+mat_embryo_2 <- Read10X("/home/data/Embryos_GSE157329/embryo_2/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_embryo_2 <- CreateSeuratObject(counts = mat_embryo_2, project = "embryo_2") 
+
+## save up RAM
+rm(mat_embryo_2) # saves RAM
+
+
+head(srat_embryo_2@meta.data)
+
+## mitochondrial contamination
+srat_embryo_2[["percent.mt"]] <- PercentageFeatureSet(srat_embryo_2, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_embryo_2[["percent.rb"]] <- PercentageFeatureSet(srat_embryo_2, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_embryo_2, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## transfer annotation and metadata information from annotation file of the publication
+annotation_pub_emb2 <- filter(annotation_pub, embryo == "emb2" & dissection_part == "head")
+
+srat_embryo_2@meta.data$barcode <- rownames(srat_embryo_2@meta.data) # create column with barcodes so that it is easier to compare
+
+# for loop to add all columns present in the publication annotation file to the seurat object
+for (x in colnames(annotation_pub_emb2)) {
+  srat_embryo_2[[x]] <- annotation_pub_emb2[[x]][match(rownames(srat_embryo_2@meta.data), annotation_pub_emb2$barcode_pub)] 
+}
+
+srat_embryo_2$filter <- is.na(srat_embryo_2$barcode_pub) # creates a logical column with rows to be filtered
+head(srat_embryo_2@meta.data)
+
+## filter out cells that were filtered out in the publication
+srat_embryo_2_filtered <- subset(srat_embryo_2, subset = filter ==F) # filters out cells whose barcode was not present in the publictaion barcodes
+head(srat_embryo_2_filtered@meta.data)
+
+rm(srat_embryo_2) # saves RAM
+```
+
+
+## Embryo 4 - CS13/14 - male
+
+```{r}
+## Load dataset
+mat_embryo_4 <- Read10X("/home/data/Embryos_GSE157329/embryo_4/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_embryo_4 <- CreateSeuratObject(counts = mat_embryo_4, project = "embryo_4") 
+
+## save up RAM
+rm(mat_embryo_4) # saves RAM
+
+
+head(srat_embryo_4@meta.data)
+
+## mitochondrial contamination
+srat_embryo_4[["percent.mt"]] <- PercentageFeatureSet(srat_embryo_4, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_embryo_4[["percent.rb"]] <- PercentageFeatureSet(srat_embryo_4, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_embryo_4, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## transfer annotation and metadata information from annotation file of the publication
+annotation_pub_emb4 <- filter(annotation_pub, embryo == "emb4" & dissection_part == "head")
+
+srat_embryo_4@meta.data$barcode <- rownames(srat_embryo_4@meta.data) # create column with barcodes so that it is easier to compare
+
+# for loop to add all columns present in the publication annotation file to the seurat object
+for (x in colnames(annotation_pub_emb4)) {
+  srat_embryo_4[[x]] <- annotation_pub_emb4[[x]][match(rownames(srat_embryo_4@meta.data), annotation_pub_emb4$barcode_pub)] 
+}
+
+srat_embryo_4$filter <- is.na(srat_embryo_4$barcode_pub) # creates a logical column with rows to be filtered
+head(srat_embryo_4@meta.data)
+
+## filter out cells that were filtered out in the publication
+srat_embryo_4_filtered <- subset(srat_embryo_4, subset = filter ==F) # filters out cells whose barcode was not present in the publictaion barcodes
+head(srat_embryo_4_filtered@meta.data)
+
+rm(srat_embryo_4) # saves RAM
+```
+
+
+## Embryo 5 - CS15/16 - female
+
+```{r}
+## Load dataset
+mat_embryo_5 <- Read10X("/home/data/Embryos_GSE157329/embryo_5/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_embryo_5 <- CreateSeuratObject(counts = mat_embryo_5, project = "embryo_5") 
+
+## save up RAM
+rm(mat_embryo_5) # saves RAM
+
+
+head(srat_embryo_5@meta.data)
+
+## mitochondrial contamination
+srat_embryo_5[["percent.mt"]] <- PercentageFeatureSet(srat_embryo_5, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_embryo_5[["percent.rb"]] <- PercentageFeatureSet(srat_embryo_5, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_embryo_5, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## transfer annotation and metadata information from annotation file of the publication
+annotation_pub_emb5 <- filter(annotation_pub, embryo == "emb5" & dissection_part == "head")
+
+srat_embryo_5@meta.data$barcode <- rownames(srat_embryo_5@meta.data) # create column with barcodes so that it is easier to compare
+
+# for loop to add all columns present in the publication annotation file to the seurat object
+for (x in colnames(annotation_pub_emb5)) {
+  srat_embryo_5[[x]] <- annotation_pub_emb5[[x]][match(rownames(srat_embryo_5@meta.data), annotation_pub_emb5$barcode_pub)] 
+}
+
+srat_embryo_5$filter <- is.na(srat_embryo_5$barcode_pub) # creates a logical column with rows to be filtered
+head(srat_embryo_5@meta.data)
+
+## filter out cells that were filtered out in the publication
+srat_embryo_5_filtered <- subset(srat_embryo_5, subset = filter ==F) # filters out cells whose barcode was not present in the publictaion barcodes
+head(srat_embryo_5_filtered@meta.data)
+
+rm(srat_embryo_5) # saves RAM
+```
+
+
+
+## Embryo 6a - CS15/16 - male
+
+```{r}
+## Load dataset
+mat_embryo_6a <- Read10X("/home/data/Embryos_GSE157329/embryo_6_a/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_embryo_6a <- CreateSeuratObject(counts = mat_embryo_6a, project = "embryo_6a") 
+
+## save up RAM
+rm(mat_embryo_6a) # saves RAM
+
+head(srat_embryo_6a@meta.data)
+
+## mitochondrial contamination
+srat_embryo_6a[["percent.mt"]] <- PercentageFeatureSet(srat_embryo_6a, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_embryo_6a[["percent.rb"]] <- PercentageFeatureSet(srat_embryo_6a, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_embryo_6a, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## transfer annotation and metadata information from annotation file of the publication
+annotation_pub_emb6a <- filter(annotation_pub, sample == "h9a" & dissection_part == "head")
+
+srat_embryo_6a@meta.data$barcode <- rownames(srat_embryo_6a@meta.data) # create column with barcodes so that it is easier to compare
+
+# for loop to add all columns present in the publication annotation file to the seurat object
+for (x in colnames(annotation_pub_emb6a)) {
+  srat_embryo_6a[[x]] <- annotation_pub_emb6a[[x]][match(rownames(srat_embryo_6a@meta.data), annotation_pub_emb6a$barcode_pub)] 
+}
+
+srat_embryo_6a$filter <- is.na(srat_embryo_6a$barcode_pub) # creates a logical column with rows to be filtered
+head(srat_embryo_6a@meta.data)
+
+## filter out cells that were filtered out in the publication
+srat_embryo_6a_filtered <- subset(srat_embryo_6a, subset = filter ==F) # filters out cells whose barcode was not present in the publictaion barcodes
+head(srat_embryo_6a_filtered@meta.data)
+
+rm(srat_embryo_6a) # saves RAM
+```
+
+
+
+
+## Embryo 6b - CS15/16 - male
+
+```{r}
+## Load dataset
+mat_embryo_6b <- Read10X("/home/data/Embryos_GSE157329/embryo_6_b/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_embryo_6b <- CreateSeuratObject(counts = mat_embryo_6b, project = "embryo_6b") 
+
+## save up RAM
+rm(mat_embryo_6b) # saves RAM
+
+
+head(srat_embryo_6b@meta.data)
+
+## mitochondrial contamination
+srat_embryo_6b[["percent.mt"]] <- PercentageFeatureSet(srat_embryo_6b, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_embryo_6b[["percent.rb"]] <- PercentageFeatureSet(srat_embryo_6b, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_embryo_6b, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## transfer annotation and metadata information from annotation file of the publication
+annotation_pub_emb6b <- filter(annotation_pub, sample == "h9b" & dissection_part == "head")
+
+srat_embryo_6b@meta.data$barcode <- rownames(srat_embryo_6b@meta.data) # create column with barcodes so that it is easier to compare
+
+# for loop to add all columns present in the publication annotation file to the seurat object
+for (x in colnames(annotation_pub_emb6b)) {
+  srat_embryo_6b[[x]] <- annotation_pub_emb6b[[x]][match(rownames(srat_embryo_6b@meta.data), annotation_pub_emb6b$barcode_pub)] 
+}
+
+srat_embryo_6b$filter <- is.na(srat_embryo_6b$barcode_pub) # creates a logical column with rows to be filtered
+head(srat_embryo_6b@meta.data)
+
+## filter out cells that were filtered out in the publication
+srat_embryo_6b_filtered <- subset(srat_embryo_6b, subset = filter ==F) # filters out cells whose barcode was not present in the publictaion barcodes
+head(srat_embryo_6b_filtered@meta.data)
+
+rm(srat_embryo_6b) # saves RAM
+```
+
+
+
+
+
+#################################################
+# Data integration using Seurat
+
+```{r}
+## create a list of all the samples
+list_filtered_srat <- c( srat_embryo_1_filtered, srat_embryo_2_filtered, srat_embryo_4_filtered, srat_embryo_5_filtered, srat_embryo_6a_filtered, srat_embryo_6b_filtered)
+
+## merge
+merged_seurat <- merge(x = list_filtered_srat[[1]],
+		       y = list_filtered_srat[2:length(list_filtered_srat)],
+		       merge.data = TRUE)
+
+head(merged_seurat@meta.data)
+
+
+## save RAM
+rm(srat_embryo_1_filtered,
+srat_embryo_2_filtered,
+srat_embryo_4_filtered,
+srat_embryo_5_filtered,
+srat_embryo_6a_filtered,
+srat_embryo_6b_filtered,
+list_filtered_srat)
+```
+
+
+
+```{r}
+## Let's have a look at the number of cells coming from all the individual samples
+table(merged_seurat$embryo)
+
+## Save the merged Seurat object
+saveRDS(merged_seurat, "/home/data/Embryos_GSE157329/Seurat_code/outputs/merged_dataset_raw.rds")
+
+
+merged_seurat<- readRDS ("/home/data/Embryos_GSE157329/Seurat_code/outputs/merged_dataset_raw.rds")
+table(merged_seurat$orig.ident)
+```
+
+
+
+## Do normalization separately for each dataset (https://satijalab.org/seurat/articles/sctransform_v2_vignette.html)
+
+```{r}
+test2 <- merged_seurat@meta.data%>%
+  select(sample, embryo, dissection_part) %>%
+  unique()
+
+
+
+# split the dataset into a list of 7 seurat objects (sample names)
+merged_seurat_integrated.list <- SplitObject(merged_seurat_integrated, split.by = "sample")
+
+# normalize and identify variable features for each dataset independently
+merged_seurat_integrated.list <- lapply(X = merged_seurat_integrated.list, FUN = function(x) {
+    x <- SCTransform(x, vars.to.regress = c("percent.mt"))
+    x <- RunPCA(x, npcs = 30, verbose = FALSE)
+})
+
+# select features and prepare fo integration
+features <- SelectIntegrationFeatures(object.list = merged_seurat_integrated.list, nfeatures = 3000)
+merged_seurat_integrated.list <- PrepSCTIntegration(object.list = merged_seurat_integrated.list, anchor.features = features)
+
+```
+
+## find anchors and integrate
+```{r}
+anchors <- FindIntegrationAnchors(object.list = merged_seurat_integrated.list, normalization.method = "SCT" , anchor.features = features)
+merged_seurat_integrated <- IntegrateData(anchorset = anchors, normalization.method = "SCT" , dims = 1:40)
+```
+## Run the standard workflow for visualization
+```{r}
+## The integrated dataset vill store the values in the "integrated" assay
+DefaultAssay(merged_seurat_integrated) <- "integrated"
+
+merged_seurat_integrated <- RunPCA(merged_seurat_integrated, verbose = FALSE)
+merged_seurat_integrated <- RunUMAP(merged_seurat_integrated, reduction = "pca", dims = 1:50)
+```
+```{r}
+## Save the integrated Seurat object
+saveRDS(merged_seurat_integrated, "/home/data/Embryos_GSE157329/Seurat_code/outputs/merged_dataset_integrated_with_Seurat.rds")
+merged_seurat_integrated<- readRDS ("/home/data/Embryos_GSE157329/Seurat_code/outputs/merged_dataset_integrated_with_Seurat.rds")
+```
+
+
+## Plot the 3 datasets to visualize the difference
+
+```{r}
+
+DimPlot(merged_seurat_integrated, reduction="umap", group.by = "embryo")
+DimPlot(merged_seurat_integrated, reduction="umap", group.by = "developmental.system")
+DimPlot(merged_seurat_integrated, reduction="umap", group.by = "final_annotation")
+
+
+
+Idents(merged_seurat_integrated) <- "developmental.system"
+DimPlot(merged_seurat_integrated, reduction = "umap", label = TRUE, repel = TRUE, pt.size = 0.5) + theme(legend.text = element_text(size = 8)) + NoLegend()
+
+## save plot
+ggsave("UMAP_clusters.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+```
+
+
+
+## Let's subset the neuronal clusters to resolve the granularity
+```{r}
+# first prepare the merged and integrated object for DE analysis (this normalizes the SCT counts across samples)
+merged_seurat_integrated <- PrepSCTFindMarkers(merged_seurat_integrated)
+
+## Save the integrated Seurat object
+saveRDS(merged_seurat_integrated, "/home/data/Embryos_GSE157329/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers.rds")
+
+## load the integrated Seurat object
+merged_seurat_integrated <- readRDS("/home/data/Embryos_GSE157329/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers.rds")
+
+# change default assay. SCT is used when looking at gene expression. integrated is used when finding clusters and neighbors
+DefaultAssay(merged_seurat_integrated) <- "SCT"
+DefaultAssay(merged_seurat_integrated) <- "integrated"
+```
+
+
+```{r}
+# create a subset
+neuronal_cluster <- subset(merged_seurat_integrated, idents = c("neural progenitor", "neuron", "sensory neuron", "schwann"))
+
+
+# Find clusters
+DefaultAssay(neuronal_cluster) <- "integrated"
+neuronal_cluster <- FindNeighbors(object = neuronal_cluster, reduction = "pca")
+neuronal_cluster <- FindClusters(neuronal_cluster, resolution = 0.5)
+
+DimPlot(neuronal_cluster,label.size = 4,repel = T,label = T)
+  ```
+
+
+
+
+### Tranfer the annotation information I made from brain organoids dataset into this dataset (https://satijalab.org/seurat/articles/integration_mapping.html)
+```{r}
+# Load the organoids dataset
+organoids_seurat <- readRDS("/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers_identified_clusters.rds")
+DefaultAssay(organoids_seurat) <- "integrated"
+
+## find transfer anchors
+transfer.anchors <- FindTransferAnchors(reference = organoids_seurat, query = neuronal_cluster,
+    dims = 1:30, reference.reduction = "pca")
+
+## predict annotations based on transfer anchors
+predictions <- TransferData(anchorset = transfer.anchors, refdata = organoids_seurat$cluster_names_final,
+    dims = 1:30)
+neuronal_cluster <- AddMetaData(neuronal_cluster, metadata = predictions)
+
+DimPlot(neuronal_cluster, reduction="umap", group.by = "predicted.id")
+```
+
+
+```{r}
+## plot
+new_order <- c("RG", "Proliferating RG", "NPCs-2","RG - enriched ribosomes", "OPCs-1", "oRG", "OPCs - Oligodendrocytes","RG - Astrocytes", "Astrocytes", "NPCs-1","OPCs-2", "Choroid Plexus cells", "Glial cells", "Neurons - ribosome enriched","NPCs-3",  "Immature Neurons",   "Neurons-1",    "Neurons-2", "Excitatory Neurons" )
+
+
+Idents(neuronal_cluster) <- "predicted.id"
+Idents(neuronal_cluster) <- factor(Idents(neuronal_cluster), levels= new_order)
+
+## Save the integrated Seurat object
+saveRDS(neuronal_cluster, "/home/data/Embryos_GSE157329/outputs/neuronal_cluster_final.rds")
+write_csv(predictions, "predictions.csv")
+
+
+DimPlot(neuronal_cluster, reduction = "umap", label = TRUE, repel = TRUE, pt.size = 0.5) + theme(legend.text = element_text(size = 8)) 
+
+## save plot
+ggsave("UMAP_closeup_neuronal_cluster.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+```
+
+
+
+
+
+```{r}
+DefaultAssay(neuronal_cluster) <- "SCT"
+## Choroid (subcluster of cluster 1)
+VlnPlot(neuronal_cluster, features = c("TTR"))
+FeaturePlot(neuronal_cluster, features = c("TTR"))
+DimPlot(neuronal_cluster,label.size = 4,repel = T,label = T) + NoLegend()
+
+```
+
+## Find clusters
+```{r}
+merged_seurat_integrated <- FindNeighbors(object = merged_seurat_integrated, reduction = "pca")
+merged_seurat_integrated <- FindClusters(merged_seurat_integrated, resolution = 0.5)
+
+table(merged_seurat_integrated@meta.data$seurat_clusters)  #shows the size of each cluster
+```
+
+## Let's plot the clusters
+```{r}
+DimPlot(merged_seurat,label.size = 4,repel = T,label = T)
+DimPlot(harmonized_seurat,label.size = 4,repel = T,label = T)
+DimPlot(merged_seurat_integrated,label.size = 4,repel = T,label = T)
+```
+
+```{r}
+FeaturePlot(merged_seurat_integrated, features = c("DCX", "TACC3", "HES1"))
+```
+
+
+```{r}
+## Save the integrated Seurat object
+saveRDS(merged_seurat_integrated, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson.rds")
+```
+
+## Anotate Clusters
+```{r}
+## Find the markers within cluster
+# first prepare the merged and integrated object for DE analysis (this normalizes the SCT counts across samples)
+merged_seurat_integrated <- PrepSCTFindMarkers(merged_seurat_integrated)
+
+## Save the integrated Seurat object
+saveRDS(merged_seurat_integrated, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers.rds")
+
+## load the integrated Seurat object
+merged_seurat_integrated <- readRDS("/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers.rds")
+
+# change default assay. SCT is used when looking at gene expression
+DefaultAssay(merged_seurat_integrated) <- "SCT"
+
+# find markers for every cluster compared to all remaining cells, report only the positive ones
+
+merged_seurat_integrated.markers <- FindAllMarkers(merged_seurat_integrated, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25, assay = "SCT")
+
+marker_list_top10 <- merged_seurat_integrated.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 25, order_by = avg_log2FC) %>%
+  select(cluster, gene)
+
+marker_list_top10
+
+write.table(marker_list_top10, file = "markers_merged_Seurat.txt", sep = "\t",
+            row.names = FALSE, col.names = TRUE)
+```
+0	PLCG2			-> microglial cells; glial cells
+0	HSP90AA1			-> glial cells (Muller and Schwann)
+0	MDM2    -> oligodendrocytes
+0	H3F3B		-> microglial cells; glial cells	
+0	POLR2A		-> glial cells (Muller and Schwann)	
+0	CCDC144NL-AS1			
+0	RBM39			-> Glial cells
+0	KMT2E			
+0	NOP58			
+0	USP15
+
+```{r}
+## Neurons (cluster 1, 5, 7, 10, 11, 13)
+VlnPlot(merged_seurat_integrated, features = c("DCX"))
+FeaturePlot(merged_seurat_integrated, features = c("DCX"))
+```
+
+```{r}
+## Excitatory Neurons (cluster 1 and 7)
+VlnPlot(merged_seurat_integrated, features = c("NEUROD2"))
+FeaturePlot(merged_seurat_integrated, features = c("NEUROD2"))
+```
+
+
+```{r}
+## Outer Radial Glia (cluster 4)
+VlnPlot(merged_seurat_integrated, features = c("HOPX", "PTPRZ1", "FAM107A"))
+FeaturePlot(merged_seurat_integrated, features = c("HOPX", "PTPRZ1", "FAM107A"))
+```
+```{r}
+## Proliferating RG (cluster 8)
+VlnPlot(merged_seurat_integrated, features = c("TACC3"))
+FeaturePlot(merged_seurat_integrated, features = c("TACC3"))
+```
+```{r}
+## Intermediate progenitor cells
+VlnPlot(merged_seurat_integrated, features = c("EOMES", "RBFOX1", "SOX4", "HOPX"))
+FeaturePlot(merged_seurat_integrated, features = c("EOMES", "RBFOX1", "SOX4", "HOPX"))
+```
+```{r}
+## Microglia (cluster x)
+VlnPlot(merged_seurat_integrated, features = c("AIF1"))
+FeaturePlot(merged_seurat_integrated, features = c("AIF1"))
+```
+
+
+```{r}
+## Choroid (subcluster of cluster 4)
+VlnPlot(merged_seurat_integrated, features = c("TTR"))
+FeaturePlot(merged_seurat_integrated, features = c("TTR"))
+```
+```{r}
+## Interneurons (cluster 7)
+VlnPlot(merged_seurat_integrated, features = c("SST", "PVALB"))
+FeaturePlot(merged_seurat_integrated, features = c("SST", "PVALB"))
+```
+
+```{r}
+## Interneurons (cluster 7)
+VlnPlot(merged_seurat_integrated, features = c("ANK3", "NOVA1", "GAD1"))
+FeaturePlot(merged_seurat_integrated, features = c("ANK3", "NOVA1", "GAD1"))
+
+```
+```{r}
+## Neurons abundant in ribosome (cluster 10)
+VlnPlot(merged_seurat_integrated, features = c("RPS29", "RPL18A"))
+FeaturePlot(merged_seurat_integrated, features = c( "RPS29", "RPL18A"))
+
+```
+
+```{r}
+## Neural Progenitor Cells NPCs (cluster 12 and 13)
+VlnPlot(merged_seurat_integrated, features = c("NES", "SOX2", "FGFR1"))
+FeaturePlot(merged_seurat_integrated, features = c("NES", "SOX2", "FGFR1"))
+
+```
+
+```{r}
+## Oligodendrocyte Precursor Cells (cluster 14)
+VlnPlot(merged_seurat_integrated, features = c("SOX10", "OLIG1", "PCDH15", "MBP", "PDGFRA", "PTPRZ1"))
+FeaturePlot(merged_seurat_integrated, features = c("SOX10", "OLIG1", "PCDH15", "MBP", "PDGFRA", "PTPRZ1"))
+
+```
+
+```{r}
+## Oligodendrocyte markers (cluster x)
+VlnPlot(merged_seurat_integrated, features = c("MOG", "MAG", "PLP1", "MOBP", "MBP", "PDGFRA"))
+FeaturePlot(merged_seurat_integrated, features = c("MOG", "MAG", "PLP1", "MOBP", "MBP", "PDGFRA"))
+
+```
+
+
+
+
+
+```{r}
+## Astrocytes markers (cluster x)
+VlnPlot(merged_seurat_integrated, features = c("GFAP", "SLC1A3", "AQP4", "SLC1A2", "ALDH1L1", "GJA1"))
+FeaturePlot(merged_seurat_integrated, features = c("GFAP", "SLC1A3", "AQP4", "SLC1A2", "ALDH1L1", "GJA1"))
+
+```
+```{r}
+## Radial Glia (cluster 3 and 4)
+VlnPlot(merged_seurat_integrated, features = c("VIM", "EDNRB", "SOX3", "ZFP36L1", "HES1", "ATP1A2")) 
+FeaturePlot(merged_seurat_integrated, features = c("VIM", "EDNRB", "SOX3", "ZFP36L1", "HES1", "ATP1A2")) 
+```
+
+
+
+
+
+
+
+
+## Finally we can assign the names of the clusters
+### Subcluster 1 of cluster 4
+```{r}
+## Assign names in the subsubclusters of subcluster 1
+new.cluster.ids <- c("1", "Choroid Plexus cells", "1")
+names(new.cluster.ids) <- levels(cluster_4_1)
+cluster_4_1 <- RenameIdents(cluster_4_1, new.cluster.ids)
+DimPlot(cluster_4_1, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+```{r}
+## project those identities back to subclusters of cluster 4
+
+# Get the indices of cells that are present in both the original Seurat object and the subseurat object
+indices <- match(rownames(cluster_4_1@meta.data), rownames(cluster_4@meta.data))
+
+# Assign the subcluster identities to the corresponding cells in the original Seurat object
+cluster_4$subclusters_1 <- as.character(Idents(cluster_4))
+
+cluster_4@meta.data$subclusters_1[indices] <- as.character(Idents(cluster_4_1))
+
+
+# Visualize the subclusters in the original Seurat object
+DimPlot(cluster_4, reduction = "umap", group.by = "subclusters_1")
+DimPlot(cluster_4, reduction = "umap")
+
+
+Idents(cluster_4) <- "subclusters_1"
+Idents(cluster_4) <- "integrated_snn_res.0.2"
+VlnPlot(cluster_4, features = c("TTR"))
+FeaturePlot(cluster_4, features = c("TTR"))
+```
+
+```{r}
+## Assign names in the subsubclusters of subcluster 1
+new.cluster.ids <- c("OPCs-2", "oRG", "NPCs-1", "Choroid Plexus cells", "Astrocytes")
+names(new.cluster.ids) <- levels(cluster_4)
+cluster_4 <- RenameIdents(cluster_4, new.cluster.ids)
+DimPlot(cluster_4, reduction = "umap", label = TRUE, pt.size = 0.5) 
+```
+
+
+```{r}
+## project those identities back to cluster 4 of Seurat object
+
+# Get the indices of cells that are present in both the original Seurat object and the subseurat object
+indices <- match(rownames(cluster_4@meta.data), rownames(merged_seurat_integrated@meta.data))
+
+# Assign the subcluster identities to the corresponding cells in the original Seurat object
+merged_seurat_integrated$cluster_names <- as.character(Idents(merged_seurat_integrated))
+
+merged_seurat_integrated@meta.data$cluster_names[indices] <- as.character(Idents(cluster_4))
+
+
+# Visualize the subclusters in the original Seurat object
+DimPlot(merged_seurat_integrated, reduction = "umap", group.by = "cluster_names")
+DimPlot(merged_seurat_integrated, reduction = "umap")
+
+
+Idents(merged_seurat_integrated) <- "cluster_names"
+DimPlot(merged_seurat_integrated, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+
+```
+
+```{r}
+## Assign names of all remaining clusters
+new.cluster.ids <- c("Glial cells", "RG - enriched ribosomes", "OPCs-1", "OPCs-2", "Excitatory Neurons", "Proliferating RG", "RG", "Neurons-1", "RG - Astrocytes", "Immature Neurons", "oRG", "Neurons-2", "NPCs-1", "NPCs-3", "Choroid Plexus cells", "NPCs-2", "Neurons - ribosome enriched", "Astrocytes", "OPCs - Oligodendrocytes")
+names(new.cluster.ids) <- levels(merged_seurat_integrated)
+merged_seurat_integrated <- RenameIdents(merged_seurat_integrated, new.cluster.ids)
+merged_seurat_integrated$cluster_names_final <- as.character(Idents(merged_seurat_integrated))
+DimPlot(merged_seurat_integrated, reduction = "umap", label = TRUE, repel = TRUE, pt.size = 0.5) + theme(legend.text = element_text(size = 8))
+
+## save plot
+ggsave("UMAP_clusters.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+```
+### save
+```{r}
+## Save the integrated Seurat object
+saveRDS(merged_seurat_integrated, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers_identified_clusters.rds")
+
+## load the integrated Seurat object
+merged_seurat_integrated <- readRDS("/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers_identified_clusters.rds")
+```
+
+
+
+
+
+# Downstream analyses on isoforms THRA1 and THRA2
+## adjust levels for graphs
+```{r}
+## order the cell population in pseudotime
+new_order <- c("RG", "Proliferating RG", "NPCs-2","RG - enriched ribosomes", "OPCs-1", "oRG", "OPCs - Oligodendrocytes","RG - Astrocytes", "Astrocytes", "NPCs-1","OPCs-2", "Choroid Plexus cells", "Glial cells", "Neurons - ribosome enriched","NPCs-3",  "Immature Neurons",   "Neurons-1",    "Neurons-2", "Excitatory Neurons" )
+Idents(neuronal_cluster) <- factor(Idents(neuronal_cluster), levels= new_order)
+## order the timepoints
+merged_seurat_integrated$Timepoint <- factor(merged_seurat_integrated$Timepoint, levels = c("day_50", "day_100"))
+```
+
+## plot isoforms expression
+```{r}
+## do plots
+FeaturePlot(merged_seurat_integrated, features = c("THRA"))
+FeaturePlot(merged_seurat_integrated, features = c("THRA1"))
+FeaturePlot(merged_seurat_integrated, features = c("THRA2"))
+```
+
+### raster plots
+```{r}
+RidgePlot(neuronal_cluster, features = c("VIM")) + NoLegend()+ 
+  theme(axis.title=element_blank(), axis.text.x = element_text(size = 10))
+```
+
+
+
+### Violin plots
+```{r}
+VlnPlot(merged_seurat_integrated, features = c("THRA1"), split.by = "stage", split.plot = TRUE)
+VlnPlot(merged_seurat_integrated, features = c("THRA2"), split.by = "stage", split.plot = TRUE, pt.size = 0) + 
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(size = 10))
+
+
+
+VlnPlot(merged_seurat_integrated, features = c("THRA2"), pt.size = 0, split.by = "stage", split.plot = T) + 
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(size = 10)) + NoLegend() + ylim(0, 2)
+
+ggsave("Violin_THRA2_timepoints.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+```
+
+
+### DotPlots 
+```{r}
+
+## all
+DefaultAssay(merged_seurat_integrated) <- "SCT"
+
+DotPlot(merged_seurat_integrated, features = c("THRA1", "THRA2"), dot.scale = 7.5, assay = "SCT") + 
+  theme(axis.title=element_blank())+ scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot_all.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" ) 
+
+
+
+DotPlot(merged_seurat_integrated, features = c("THRA1", "THRA2", "SLC16A2"), dot.scale = 7.5) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_MCT8_dotplot_all.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+## neuronal cluster
+DefaultAssay(neuronal_cluster) <- "SCT"
+
+DotPlot(neuronal_cluster, features = c("THRA1", "THRA2"), dot.scale = 7.5, assay = "SCT") + 
+  theme(axis.title=element_blank())+ scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot_neuronal_cluster_closeup.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" ) 
+
+
+
+DotPlot(neuronal_cluster, features = c("THRA1", "THRA2", "SLC16A2"), dot.scale = 7.5) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_MCT8_dotplot_neuronal_cluster_closeup.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+
+
+#DotPlot(merged_seurat_integrated, features = c("THRA1", "THRA2"), split.by = "stage") + 
+ # theme(axis.title.x=element_blank())
+```
+
+
+### FeaturePlots
+```{r}
+FeaturePlot(merged_seurat_integrated, features = c("THRA1", "THRA2"), blend = TRUE)
+
+FeaturePlot(merged_seurat_integrated, features = c("THRA1", "THRA2"), split.by = "stage" )
+ggsave("UMAP_THRA1_THRA2_timepoints.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+
+FeaturePlot(merged_seurat_integrated, features = c("SLC16A2"), split.by = "stage" )
+FeaturePlot(merged_seurat_integrated, features = c("SLC16A2"))
+```
+
+## Split dataset into timepoints to visualize the difference in expression in one graph - all
+```{r}
+# create a subsets
+day_12 <- subset(merged_seurat_integrated, subset = stage == "CS12" )
+day_13 <- subset(merged_seurat_integrated, subset = stage == "CS13-14" )
+day_15 <- subset(merged_seurat_integrated, subset = stage == "CS15-16" )
+unique(neuronal_cluster@meta.data[["stage"]])
+```
+
+
+```{r}
+# plot (making sure that axis are comparable)
+
+DotPlot(day_12, features = c("THRA1", "THRA2"), dot.scale = 7.5, scale.max = 25, col.min = -1, col.max = 2.1) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot_CS_12_all.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+
+
+DotPlot(day_13, features = c("THRA1", "THRA2"), dot.scale = 7.5, scale.max = 25, col.min = -1, col.max = 2.1) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot_CS_13-14_all.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+
+DotPlot(day_15, features = c("THRA1", "THRA2"), dot.scale = 7.5, scale.max = 25, col.min = -1, col.max = 2.1) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot_CS_15-16_all.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+
+```
+
+## Split dataset into timepoints to visualize the difference in expression in one graph - neuronal cluster
+```{r}
+# create a subsets
+day_12 <- subset(neuronal_cluster, subset = stage == "CS12" )
+day_13 <- subset(neuronal_cluster, subset = stage == "CS13-14" )
+day_15 <- subset(neuronal_cluster, subset = stage == "CS15-16" )
+unique(neuronal_cluster@meta.data[["stage"]])
+```
+
+
+```{r}
+# plot (making sure that axis are comparable)
+
+DotPlot(day_12, features = c("THRA1", "THRA2"), dot.scale = 7.5, scale.max = 25, col.min = -1, col.max = 2.1) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot_CS_12_neuronal_cluster_closeup.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+
+
+DotPlot(day_13, features = c("THRA1", "THRA2"), dot.scale = 7.5, scale.max = 25, col.min = -1, col.max = 2.1) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot_CS_13-14_neuronal_cluster_closeup.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+
+DotPlot(day_15, features = c("THRA1", "THRA2"), dot.scale = 7.5, scale.max = 25, col.min = -1, col.max = 2.1) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot_CS_15-16_neuronal_cluster_closeup.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+
+```
+
+
+
+
+
+## Visualize the proportions of each cell population between conditions
+```{r}
+# How does cluster membership vary by replicate?
+table(Idents(merged_seurat_integrated), merged_seurat_integrated$stage)
+
+cell_composition <- as.data.frame(prop.table(table(Idents(merged_seurat_integrated), merged_seurat_integrated$stage), margin = 2)) %>%
+  mutate(Freq = round((Freq * 100), digits = 2)) %>%
+  mutate(Freq_adjusted = ifelse(Var2 == "day_50", Freq *-1,Freq))
+
+cell_composition
+
+ggplot(cell_composition, aes(x=Var1, y=Freq_adjusted, label=Var2)) + 
+  geom_bar(stat='identity',position = "stack", aes(fill=Var2), width=.5)  +
+   theme_light(base_size = 12)+
+  scale_fill_manual(name="", 
+                    labels = c( "day_50", "day_100"), 
+                    values = c("day_50"="#5A7C86", "day_100"="#A2D2DB")) + 
+  scale_y_continuous("% of cells" ,limits=c(-20, 20))+ 
+#  geom_hline(yintercept=50, linetype="dashed", color = "#DC4E3C")+
+  #labs(subtitle="", 
+      # title= "THRA isoform expression pattern - Mosdepth",
+       #caption = "~62M uniquely mapped reads, n=1") + 
+    theme(axis.title.y=element_blank()) +
+  coord_flip()
+
+ggsave("Cell_population_distribution_timepoints.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+```
+
+
+
+
+
+### DotPlot of differentially expressed genes
+```{r}
+# all head
+DotPlot(merged_seurat_integrated, features = c("VIM","SOX3", "PAX6", "UBE2C",  "FABP7", "PLP1", "APOE", "CSNK1G1", "RMST", "TTR", "PCP4",  "STMN2", "GAP43", "SYT1", "DCX", "CADM2"), dot.scale = 6, dot.min = 0.24) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red")) +
+  scale_x_discrete(guide = guide_axis(angle = 75))
+
+
+ggsave("DotPlot_markers_all.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+# closeup
+DotPlot(neuronal_cluster, features = c("VIM","SOX3", "PAX6", "UBE2C",  "FABP7", "PLP1", "APOE", "CSNK1G1", "RMST", "TTR", "PCP4",  "STMN2", "GAP43", "SYT1", "DCX", "CADM2"), dot.scale = 6, dot.min = 0.24) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red")) +
+  scale_x_discrete(guide = guide_axis(angle = 75))
+
+
+ggsave("DotPlot_markers_neuronal_cluster_closeup.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+```
+
+
+### DotPlot of genes involved in the Dopamine system
+```{r}
+## all
+DotPlot(merged_seurat_integrated, features = c("TH","QDPR", "GCH1", "DDC",  "COMT", "MAOA", "MAOB", "DRD1", "DRD2", "DRD3", "SLC6A3"), dot.scale = 6, dot.min = 0.0) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red")) +
+  scale_x_discrete(guide = guide_axis(angle = 75))
+
+
+ggsave("DotPlot_Dopamine_metabolism_all.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+## neuronal subcluster
+DotPlot(neuronal_cluster, features = c("TH","QDPR", "GCH1", "DDC",  "COMT", "MAOA", "MAOB", "DRD1", "DRD2", "DRD3", "SLC6A3"), dot.scale = 6, dot.min = 0.0) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red")) +
+  scale_x_discrete(guide = guide_axis(angle = 75))
+
+
+ggsave("DotPlot_Dopamine_metabolism_neuronal_cluster_closeup.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,1456 @@
+---
+title: "scRNA-Seq Analysis of Brain Organoid dataset from Testa et al 2020"
+output: html_notebook
+---
+## Intro
+
+```{r}
+## Load libraries
+library(Seurat)
+library(harmony)
+library(ggplot2)
+library(SingleR)
+library(dplyr)
+library(patchwork)
+#library(celldex)
+library(RColorBrewer)
+library(SingleCellExperiment)
+#library(DropletUtils)
+#library(usethis)
+library(tidyverse)
+library(sctransform)
+#library(Matrix.utils)
+
+## Set paths
+path_plots = "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/figures"
+```
+
+# Loading all the datasets separately and performing QC filtering
+
+## 3391B_D50 (day 50) - Sample 1
+
+```{r}
+## Load dataset
+mat_3391B_D50 <- Read10X("/home/data/Testa_organoids_scRNA/3391B_D50/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_3391B_D50 <- CreateSeuratObject(counts = mat_3391B_D50, project = "3391B_D50") 
+
+## save up RAM
+mat_3391B_D50 <- NULL # saves RAM
+
+## Add the timepoint to the metadata
+
+srat_3391B_D50@meta.data <- srat_3391B_D50@meta.data %>%
+  mutate("Timepoint" = as.factor("day_50")) %>%
+  relocate("Timepoint", .after="orig.ident") %>%
+  rename("Sample"="orig.ident")
+
+head(srat_3391B_D50@meta.data)
+
+## mitochondrial contamination
+srat_3391B_D50[["percent.mt"]] <- PercentageFeatureSet(srat_3391B_D50, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_3391B_D50[["percent.rb"]] <- PercentageFeatureSet(srat_3391B_D50, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_3391B_D50, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## Let's have a look at the graphs to set the thresholds 
+
+FeatureScatter(srat_3391B_D50, feature1 = "nCount_RNA", feature2 = "percent.mt") + geom_hline(yintercept=5, linetype="dashed", color = "blue")
+FeatureScatter(srat_3391B_D50, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_hline(yintercept=9000, linetype="dashed", color = "blue") + geom_hline(yintercept=200, linetype="dashed", color = "blue")
+#FeatureScatter(srat_3391B_D50, feature1 = "nCount_RNA", feature2 = "percent.rb")
+```
+
+```{r}
+## apply filters
+srat_3391B_D50_filtered <- subset(srat_3391B_D50, subset = nFeature_RNA > 200 & nFeature_RNA < 9000 & percent.mt < 5)
+srat_3391B_D50 <- NULL # saves RAM
+```
+
+
+
+
+## kolf2c1day50 (day 50) - Sample 2
+
+```{r}
+## Load dataset
+mat_kolf2c1day50 <- Read10X("/home/data/Testa_organoids_scRNA/kolf2c1day50/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_kolf2c1day50 <- CreateSeuratObject(counts = mat_kolf2c1day50, project = "kolf2c1day50") 
+
+## save up RAM
+mat_kolf2c1day50 <- NULL # saves RAM
+
+## Add the timepoint to the metadata
+
+srat_kolf2c1day50@meta.data <- srat_kolf2c1day50@meta.data %>%
+  mutate("Timepoint" = as.factor("day_50")) %>%
+  relocate("Timepoint", .after="orig.ident") %>%
+  rename("Sample"="orig.ident")
+
+head(srat_kolf2c1day50@meta.data)
+
+## mitochondrial contamination
+srat_kolf2c1day50[["percent.mt"]] <- PercentageFeatureSet(srat_kolf2c1day50, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_kolf2c1day50[["percent.rb"]] <- PercentageFeatureSet(srat_kolf2c1day50, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_kolf2c1day50, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## Let's have a look at the graphs to set the thresholds 
+
+FeatureScatter(srat_kolf2c1day50, feature1 = "nCount_RNA", feature2 = "percent.mt") + geom_hline(yintercept=4, linetype="dashed", color = "blue")
+FeatureScatter(srat_kolf2c1day50, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_hline(yintercept=9000, linetype="dashed", color = "blue") + geom_hline(yintercept=200, linetype="dashed", color = "blue")
+#FeatureScatter(srat_kolf2c1day50, feature1 = "nCount_RNA", feature2 = "percent.rb")
+```
+
+```{r}
+## apply filters
+srat_kolf2c1day50_filtered <- subset(srat_kolf2c1day50, subset = nFeature_RNA > 200 & nFeature_RNA < 9000 & percent.mt < 4)
+srat_kolf2c1day50 <- NULL # saves RAM
+```
+
+
+
+## G1_MIF1D50 (day 50) - Sample 3
+
+```{r}
+## Load dataset
+mat_G1_MIF1D50 <- Read10X("/home/data/Testa_organoids_scRNA/G1_MIF1D50/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_G1_MIF1D50 <- CreateSeuratObject(counts = mat_G1_MIF1D50, project = "G1_MIF1D50") 
+
+## save up RAM
+mat_G1_MIF1D50 <- NULL # saves RAM
+
+## Add the timepoint to the metadata
+
+srat_G1_MIF1D50@meta.data <- srat_G1_MIF1D50@meta.data %>%
+  mutate("Timepoint" = as.factor("day_50")) %>%
+  relocate("Timepoint", .after="orig.ident") %>%
+  rename("Sample"="orig.ident")
+
+head(srat_G1_MIF1D50@meta.data)
+
+## mitochondrial contamination
+srat_G1_MIF1D50[["percent.mt"]] <- PercentageFeatureSet(srat_G1_MIF1D50, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_G1_MIF1D50[["percent.rb"]] <- PercentageFeatureSet(srat_G1_MIF1D50, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_G1_MIF1D50, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## Let's have a look at the graphs to set the thresholds 
+
+FeatureScatter(srat_G1_MIF1D50, feature1 = "nCount_RNA", feature2 = "percent.mt") + geom_hline(yintercept=6, linetype="dashed", color = "blue")
+FeatureScatter(srat_G1_MIF1D50, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_hline(yintercept=9000, linetype="dashed", color = "blue") + geom_hline(yintercept=200, linetype="dashed", color = "blue")
+#FeatureScatter(srat_G1_MIF1D50, feature1 = "nCount_RNA", feature2 = "percent.rb")
+```
+
+```{r}
+## apply filters
+srat_G1_MIF1D50_filtered <- subset(srat_G1_MIF1D50, subset = nFeature_RNA > 200 & nFeature_RNA < 9000 & percent.mt < 6)
+srat_G1_MIF1D50 <- NULL # saves RAM
+```
+
+
+## S20271_156 (day 100) - Sample 4
+
+```{r}
+## Load dataset
+mat_S20271_156 <- Read10X("/home/data/Testa_organoids_scRNA/S20271_156/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_S20271_156 <- CreateSeuratObject(counts = mat_S20271_156, project = "S20271_156") 
+
+## save up RAM
+mat_S20271_156 <- NULL # saves RAM
+
+## Add the timepoint to the metadata
+
+srat_S20271_156@meta.data <- srat_S20271_156@meta.data %>%
+  mutate("Timepoint" = as.factor("day_100")) %>%
+  relocate("Timepoint", .after="orig.ident") %>%
+  rename("Sample"="orig.ident")
+
+head(srat_S20271_156@meta.data)
+
+## mitochondrial contamination
+srat_S20271_156[["percent.mt"]] <- PercentageFeatureSet(srat_S20271_156, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_S20271_156[["percent.rb"]] <- PercentageFeatureSet(srat_S20271_156, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_S20271_156, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## Let's have a look at the graphs to set the thresholds 
+
+FeatureScatter(srat_S20271_156, feature1 = "nCount_RNA", feature2 = "percent.mt") + geom_hline(yintercept=8, linetype="dashed", color = "blue")
+FeatureScatter(srat_S20271_156, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_hline(yintercept=9000, linetype="dashed", color = "blue") + geom_hline(yintercept=200, linetype="dashed", color = "blue")
+#FeatureScatter(srat_S20271_156, feature1 = "nCount_RNA", feature2 = "percent.rb")
+```
+
+```{r}
+## apply filters
+srat_S20271_156_filtered <- subset(srat_S20271_156, subset = nFeature_RNA > 200 & nFeature_RNA < 9000 & percent.mt < 8)
+srat_S20271_156 <- NULL # saves RAM
+```
+
+
+
+## S20269_154 (day 100) - Sample 5
+
+```{r}
+## Load dataset
+mat_S20269_154 <- Read10X("/home/data/Testa_organoids_scRNA/S20269_154/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_S20269_154 <- CreateSeuratObject(counts = mat_S20269_154, project = "S20269_154") 
+
+## save up RAM
+mat_S20269_154 <- NULL # saves RAM
+
+## Add the timepoint to the metadata
+
+srat_S20269_154@meta.data <- srat_S20269_154@meta.data %>%
+  mutate("Timepoint" = as.factor("day_100")) %>%
+  relocate("Timepoint", .after="orig.ident") %>%
+  rename("Sample"="orig.ident")
+
+head(srat_S20269_154@meta.data)
+
+## mitochondrial contamination
+srat_S20269_154[["percent.mt"]] <- PercentageFeatureSet(srat_S20269_154, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_S20269_154[["percent.rb"]] <- PercentageFeatureSet(srat_S20269_154, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_S20269_154, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## Let's have a look at the graphs to set the thresholds 
+
+FeatureScatter(srat_S20269_154, feature1 = "nCount_RNA", feature2 = "percent.mt") + geom_hline(yintercept=9, linetype="dashed", color = "blue")
+FeatureScatter(srat_S20269_154, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_hline(yintercept=9000, linetype="dashed", color = "blue") + geom_hline(yintercept=200, linetype="dashed", color = "blue")
+#FeatureScatter(srat_S20269_154, feature1 = "nCount_RNA", feature2 = "percent.rb")
+```
+
+```{r}
+## apply filters
+srat_S20269_154_filtered <- subset(srat_S20269_154, subset = nFeature_RNA > 200 & nFeature_RNA < 9000 & percent.mt < 9)
+srat_S20269_154 <- NULL # saves RAM
+```
+
+
+## S20265_136 (day 100) - Sample 6
+
+```{r}
+## Load dataset
+mat_S20265_136 <- Read10X("/home/data/Testa_organoids_scRNA/S20265_136/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_S20265_136 <- CreateSeuratObject(counts = mat_S20265_136, project = "S20265_136") 
+
+## save up RAM
+mat_S20265_136 <- NULL # saves RAM
+
+## Add the timepoint to the metadata
+
+srat_S20265_136@meta.data <- srat_S20265_136@meta.data %>%
+  mutate("Timepoint" = as.factor("day_100")) %>%
+  relocate("Timepoint", .after="orig.ident") %>%
+  rename("Sample"="orig.ident")
+
+head(srat_S20265_136@meta.data)
+
+## mitochondrial contamination
+srat_S20265_136[["percent.mt"]] <- PercentageFeatureSet(srat_S20265_136, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_S20265_136[["percent.rb"]] <- PercentageFeatureSet(srat_S20265_136, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_S20265_136, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## Let's have a look at the graphs to set the thresholds 
+
+FeatureScatter(srat_S20265_136, feature1 = "nCount_RNA", feature2 = "percent.mt") + geom_hline(yintercept=10, linetype="dashed", color = "blue")
+FeatureScatter(srat_S20265_136, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_hline(yintercept=9000, linetype="dashed", color = "blue") + geom_hline(yintercept=200, linetype="dashed", color = "blue")
+#FeatureScatter(srat_S20265_136, feature1 = "nCount_RNA", feature2 = "percent.rb")
+```
+
+```{r}
+## apply filters
+srat_S20265_136_filtered <- subset(srat_S20265_136, subset = nFeature_RNA > 200 & nFeature_RNA < 9000 & percent.mt < 10)
+srat_S20265_136 <- NULL # saves RAM
+```
+
+
+
+## S20276_177 (day 100) - Sample 7
+
+```{r}
+## Load dataset
+mat_S20276_177 <- Read10X("/home/data/Testa_organoids_scRNA/S20276_177/outs/filtered_feature_bc_matrix")
+
+## Create Seurat object
+srat_S20276_177 <- CreateSeuratObject(counts = mat_S20276_177, project = "S20276_177") 
+
+## save up RAM
+mat_S20276_177 <- NULL # saves RAM
+
+## Add the timepoint to the metadata
+
+srat_S20276_177@meta.data <- srat_S20276_177@meta.data %>%
+  mutate("Timepoint" = as.factor("day_100")) %>%
+  relocate("Timepoint", .after="orig.ident") %>%
+  rename("Sample"="orig.ident")
+
+head(srat_S20276_177@meta.data)
+
+## mitochondrial contamination
+srat_S20276_177[["percent.mt"]] <- PercentageFeatureSet(srat_S20276_177, pattern = "^MT-")
+
+## ribosomial protein (RPS or RPL)
+srat_S20276_177[["percent.rb"]] <- PercentageFeatureSet(srat_S20276_177, pattern = "^RP[SL]")
+
+## Visualize QC metrics as a violin plot
+VlnPlot(srat_S20276_177, features = c("nFeature_RNA", "nCount_RNA", "percent.mt","percent.rb"), ncol = 4)
+
+```
+
+```{r}
+## Let's have a look at the graphs to set the thresholds 
+
+FeatureScatter(srat_S20276_177, feature1 = "nCount_RNA", feature2 = "percent.mt") + geom_hline(yintercept=5, linetype="dashed", color = "blue")
+FeatureScatter(srat_S20276_177, feature1 = "nCount_RNA", feature2 = "nFeature_RNA") + geom_hline(yintercept=9000, linetype="dashed", color = "blue") + geom_hline(yintercept=200, linetype="dashed", color = "blue")
+#FeatureScatter(srat_S20276_177, feature1 = "nCount_RNA", feature2 = "percent.rb")
+```
+
+```{r}
+## apply filters
+srat_S20276_177_filtered <- subset(srat_S20276_177, subset = nFeature_RNA > 200 & nFeature_RNA < 9000 & percent.mt < 5)
+srat_S20276_177 <- NULL # saves RAM
+```
+
+
+
+# Merging the filtered datasets together and performing data integration using Harmony
+## link -> https://hbctraining.github.io/scRNA-seq_online/lessons/06a_integration_harmony.html
+
+```{r}
+## create a list of all the samples
+list_filtered_srat <- c( srat_3391B_D50_filtered, srat_kolf2c1day50_filtered, srat_G1_MIF1D50_filtered, srat_S20271_156_filtered, srat_S20269_154_filtered, srat_S20265_136_filtered,srat_S20276_177_filtered)
+
+## merge
+merged_seurat <- merge(x = list_filtered_srat[[1]],
+		       y = list_filtered_srat[2:length(list_filtered_srat)],
+		       merge.data = TRUE)
+
+## save RAM
+srat_3391B_D50_filtered <- NULL
+srat_kolf2c1day50_filtered <- NULL
+srat_G1_MIF1D50_filtered <- NULL
+srat_S20271_156_filtered <- NULL
+srat_S20269_154_filtered <- NULL
+srat_S20265_136_filtered <- NULL
+srat_S20276_177_filtered <- NULL
+
+
+## Let's have a look at the number of cells coming from all the individual samples
+table(merged_seurat$Sample)
+
+## Save the merged Seurat object
+saveRDS(merged_seurat, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_raw.rds")
+```
+
+
+
+## Perform log-normalization and feature selection, as well as SCT normalization on global object
+
+```{r}
+merged_seurat <- merged_seurat %>%
+    SCTransform(vars.to.regress = c("percent.mt"))
+
+# Calculate PCs using variable features determined by SCTransform (3000 by default)
+merged_seurat <- RunPCA(merged_seurat, assay = "SCT", npcs = 50)
+
+## Save the merged Seurat object
+saveRDS(merged_seurat, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_scaled.rds")
+```
+
+## Run Harmony
+```{r}
+harmonized_seurat <- RunHarmony(merged_seurat, 
+				group.by.vars = c("Sample", "Timepoint"), 
+				reduction = "pca", assay.use = "SCT", reduction.save = "harmony")
+
+## Save the integrated Seurat object
+saveRDS(harmonized_seurat, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_harmonized.rds")
+```
+
+
+# Dimentionality reduction and UMAP
+## Run the computations
+```{r}
+## harmonized dataset
+harmonized_seurat <- RunUMAP(harmonized_seurat, reduction = "harmony", assay = "SCT", dims = 1:50)
+harmonized_seurat <- FindNeighbors(object = harmonized_seurat, reduction = "harmony")
+harmonized_seurat <- FindClusters(harmonized_seurat, resolution = 0.55)
+
+table(harmonized_seurat@meta.data$seurat_clusters)  #shows the size of each cluster
+
+## Save the integrated Seurat object
+saveRDS(harmonized_seurat, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_harmonized.rds")
+
+
+## merged dataset
+merged_seurat <- RunUMAP(merged_seurat, reduction = "pca", assay = "SCT", dims = 1:40)
+merged_seurat <- FindNeighbors(object = merged_seurat, reduction = "pca")
+merged_seurat <- FindClusters(merged_seurat, resolution = 0.5)
+
+table(merged_seurat@meta.data$seurat_clusters)  #shows the size of each cluster
+
+## Save the merged Seurat object
+saveRDS(merged_seurat, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_scaled.rds")
+
+```
+## Plot the two datasets to visualize the difference
+
+```{r}
+DimPlot(merged_seurat, reduction="umap", group.by = "Timepoint")
+DimPlot(harmonized_seurat, reduction="umap", group.by = "Timepoint")
+
+DimPlot(merged_seurat, reduction="umap", group.by = "Sample")
+DimPlot(harmonized_seurat, reduction="umap", group.by = "Sample")
+```
+# Cluster identification
+## Let's plot the clusters
+```{r}
+DimPlot(merged_seurat,label.size = 4,repel = T,label = T)
+DimPlot(harmonized_seurat,label.size = 4,repel = T,label = T)
+```
+# Annotating the clusters
+```{r}
+## Some exploration
+VlnPlot(harmonized_seurat, features = c("DCX"))
+FeaturePlot(harmonized_seurat, features = c("DCX"))
+FeaturePlot(harmonized_seurat, features = c("THRA"))
+FeaturePlot(harmonized_seurat, features = c("THRA1"))
+FeaturePlot(harmonized_seurat, features = c("THRA2"))
+VlnPlot(harmonized_seurat, features = c("THRA1"))
+VlnPlot(harmonized_seurat, features = c("THRA2"))
+```
+
+
+## Identifying the Markers of each cluster
+
+```{r}
+## List of known markers
+huCortex_celltype_markers <- list(
+  Ex=c("SLC17A7", "CAMK2A","CHN1","SV2B","NRGN"),
+  In=c("GAD1", "GAD2", "SLC32A1"),
+  Ast=c("GFAP", "AQP4", "SLC4A4"),
+  Oli=c("PLP1", "MBP", "MOBP", "MOG"),
+  Mic=c("CSF1R", "CD74", "P2RY12"),
+  Opc=c("OLIG1", "OLIG2", "PDGFRA", "SOX10", "APOD"),
+  Endo=c("ATP10A", "CLDN5", "FLT1", "VWF"),
+  Per=c("PTH1R", "SLC6A12", "SLC19A1", "COLEC12", "SLC12A7")
+)
+
+## Find the markers within cluster
+# find markers for every cluster compared to all remaining cells, report only the positive ones
+srat.markers <- FindAllMarkers(harmonized_seurat, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+marker_list_top10 <- srat.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 8, order_by = avg_log2FC) %>%
+  select(cluster, gene)
+
+
+write.table(marker_list_top10, file = "markers.txt", sep = "\t",
+            row.names = TRUE, col.names = TRUE)
+
+
+```
+markers based on atlas https://www.proteinatlas.org/ 
+
+cluster 0 -> STMN2 Excitatory neurons, Horizontal cells, Inhibitory neurons;
+            NNAT Muller glia, excitatory neurons;
+            NRXN3 nhibitory neurons, Excitatory neurons, Oligodendrocytes;
+            
+cluster 1 -> PIH1D1 Fibroblasts
+            AIMP2 RNA binding
+            PLCG2 Plasma cells, Microglial cells, B-cells, NK-cells
+            
+cluster 11 -> CRABP1 Muller glia cells
+            DCC Neurons and oligodendrocytes
+            HES6
+
+
+
+
+
+
+
+
+
+
+
+
+
+cluster 1 -> NRN1 endothelial, DDIT4 	T-cells - Immune response
+cluster 2 -> NTS 	Endocrine cells, 
+            LMO3 (Alveolar cells type 1, Astrocytes, Alveolar cells type 2, Excitatory neurons, Oligodendrocyte precursor cells), RUNX1T1 Inhibitory neurons, Oligodendrocyte precursor cells, Excitatory neurons, Bipolar cells, Microglial cells
+cluster 3 -> BHLHE22 Horizontal cells, Bipolar cells; 
+              BCL11A dendritic cells, B-cells, Excitatory neurons, Langerhans cells, Basal squamous epithelial cells,               Squamous epithelial cells, Inhibitory neurons; 
+              STMN2 Excitatory neurons, Horizontal cells, Inhibitory neurons
+cluster 4 -> PTN Endometrial stromal cells, Extravillous trophoblasts, Muller glia cells, Squamous epithelial cells;
+            FABP7 Muller glia cells;
+            TTYH1 Muller glia cells
+Cluster 5 -> Muller glia cells, Late spermatids, Excitatory neurons;
+            NHLH1 Oligodendrocytes
+            EOMES Intermediate progenitor cells
+cluster 6 -> LMO3 Alveolar cells type 1, Astrocytes, Alveolar cells type 2, Excitatory neurons, Oligodendrocyte precursor cells;
+            GPR22 Inhibitory neurons, Excitatory neurons;
+            GRIA2 Excitatory neurons, Oligodendrocyte precursor cells, Inhibitory neurons, Astrocytes, Oligodendrocytes, Horizontal cells
+cluster 7 -> TOP2A Cell cycle regulation;
+            CENPF Cell cycle regulation;
+            HIST1H4C Cell proliferation
+cluster 8 -> CENPF Cell proliferation ;
+            PTTG1 Langerhans cells, Spermatocytes;
+            KPNA2 Spermatocytes, Cell cycle regulation
+cluster 9 -> CRYAB Schwann cells;
+            FTL Macrophages;
+            HSPA1A Langerhans cells
+cluster 10 -> TTR and CLU hepatocytes; 
+          CRYAB schwann cells
+cluster 11 -> Fibroblasts
+
+```{r}
+## Visualize the expression of some markers
+
+FeaturePlot(harmonized_seurat, features = c("SLC17A7", "NRN1", "IGFBP5", "STMN2", "THRA"))
+
+VlnPlot(harmonized_seurat, features = c("SLC17A7", "GAD1", "GFAP", "PLP1", "THRA"))
+
+
+```
+
+```{r}
+## Fibroblasts
+VlnPlot(harmonized_seurat, features = c("VIM", "FAP", "COL3A1"))
+FeaturePlot(harmonized_seurat, features =c("VIM", "FAP", "COL3A1"))
+```
+
+
+
+```{r}
+## Excitatory neurons
+VlnPlot(harmonized_seurat, features = c("SLC17A7", "CAMK2A","CHN1","SV2B","NRGN"))
+FeaturePlot(harmonized_seurat, features = c("SLC17A7", "CAMK2A","CHN1","SV2B","NRGN"))
+```
+
+```{r}
+## Inhibitory neurons
+VlnPlot(harmonized_seurat, features = c("GAD1", "GAD2", "SLC32A1"))
+FeaturePlot(harmonized_seurat, features = c("GAD1", "GAD2", "SLC32A1"))
+```
+
+```{r}
+## Astrocytes
+VlnPlot(harmonized_seurat, features = c("GFAP", "AQP4", "SLC4A4"))
+FeaturePlot(harmonized_seurat, features = c("GFAP", "AQP4", "SLC4A4"))
+```
+```{r}
+## Radial Glia 
+VlnPlot(harmonized_seurat, features = c("VIM"))
+FeaturePlot(harmonized_seurat, features = c("VIM"))
+```
+
+```{r}
+## Proliferating Radial Glia 
+VlnPlot(harmonized_seurat, features = c("AURKA", "UBEC2C", "TACC3"))
+FeaturePlot(harmonized_seurat, features = c("AURKA", "UBEC2C", "TACC3"))
+```
+
+
+```{r}
+## Outer Radial Glia 
+VlnPlot(harmonized_seurat, features = c("HOPX", "PTPRZ1", "FAM107A"))
+FeaturePlot(harmonized_seurat, features = c("HOPX", "PTPRZ1", "FAM107A"))
+```
+```{r}
+## Choroid 
+VlnPlot(harmonized_seurat, features = c("CXCL14", "PLS3", "TTR"))
+FeaturePlot(harmonized_seurat, features = c("CXCL14", "PLS3", "TTR"))
+```
+
+```{r}
+## Intermediate progenitor cells
+VlnPlot(harmonized_seurat, features = c("SMOC1", "IFITM3", "HES1"))
+FeaturePlot(harmonized_seurat, features = c("SMOC1", "IFITM3", "HES1"))
+```
+
+
+```{r}
+## Neurons
+VlnPlot(harmonized_seurat, features = c("STMN2", "GNG3", "DCX"))
+FeaturePlot(harmonized_seurat, features = c("STMN2", "GNG3", "DCX"))
+```
+```{r}
+## Cortical layer Neurons
+VlnPlot(harmonized_seurat, features = c("POU3F2", "RBFOX3", "BCL11B"))
+FeaturePlot(harmonized_seurat, features = c("POU3F2", "RBFOX3", "BCL11B"))
+```
+
+```{r}
+## Cortical upper layer Neurons
+VlnPlot(harmonized_seurat, features = c("SATB2", "POU3F2"))
+FeaturePlot(harmonized_seurat, features = c("SATB2", "POU3F2"))
+```
+
+```{r}
+## Microglia
+VlnPlot(harmonized_seurat, features = c("CX3CR1", "P2RY12"))
+FeaturePlot(harmonized_seurat, features = c("CX3CR1", "P2RY12"))
+
+```
+
+
+```{r}
+## Visualize heatmap of all the markers (max 20) per cluster
+srat.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 10, wt = avg_log2FC) -> top10
+DoHeatmap(srat, features = top10$gene) + NoLegend()
+```
+
+## Add new labels
+```{r}
+new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono",
+    "NK", "DC", "Platelet")
+names(new.cluster.ids) <- levels(srat)
+srat <- RenameIdents(srat, new.cluster.ids)
+DimPlot(srat, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+
+
+
+
+
+
+
+
+# intergartion based only on sample ID
+```{r}
+# Run Harmony to remove batch effects and integrate the datasets
+merged_sample_regressed <- RunHarmony(object = merged_seurat, group.by.vars = c("Sample"), covariates.use = "Timepoint", n.harmonies = 20, reduction = "pca", assay.use = "SCT")
+
+## harmonized dataset
+merged_sample_regressed <- RunUMAP(merged_sample_regressed, reduction = "harmony", assay = "SCT", dims = 1:50)
+merged_sample_regressed <- FindNeighbors(object = merged_sample_regressed, reduction = "harmony")
+merged_sample_regressed <- FindClusters(merged_sample_regressed, resolution = 0.55)
+
+## Save the integrated Seurat object
+saveRDS(merged_sample_regressed, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_harmonized_only_Sample.rds")
+```
+
+## Plot the two datasets to visualize the difference
+
+```{r}
+DimPlot(merged_seurat, reduction="umap", group.by = "Timepoint")
+DimPlot(merged_sample_regressed, reduction="umap", group.by = "Timepoint")
+
+DimPlot(merged_seurat, reduction="umap", group.by = "Sample")
+DimPlot(merged_sample_regressed, reduction="umap", group.by = "Sample")
+```
+
+
+
+```{r}
+FeaturePlot(merged_sample_regressed, features = c("DCX"))
+```
+
+
+
+# Data integration using Seurat
+
+```{r}
+## Load the merged Seurat object after QC filtering but BEFORE normalization
+merged_seurat_integrated<- readRDS ("/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_raw.rds")
+```
+
+## Do normalization separately for each dataset (https://satijalab.org/seurat/articles/sctransform_v2_vignette.html)
+
+```{r}
+# split the dataset into a list of 7 seurat objects (sample names)
+merged_seurat_integrated.list <- SplitObject(merged_seurat_integrated, split.by = "Sample")
+
+# normalize and identify variable features for each dataset independently
+merged_seurat_integrated.list <- lapply(X = merged_seurat_integrated.list, FUN = function(x) {
+    x <- SCTransform(x, vars.to.regress = c("percent.mt"))
+    x <- RunPCA(x, npcs = 30, verbose = FALSE)
+})
+
+# select features and prepare fo integration
+features <- SelectIntegrationFeatures(object.list = merged_seurat_integrated.list, nfeatures = 3000)
+merged_seurat_integrated.list <- PrepSCTIntegration(object.list = merged_seurat_integrated.list, anchor.features = features)
+
+```
+
+## find anchors and integrate
+```{r}
+anchors <- FindIntegrationAnchors(object.list = merged_seurat_integrated.list, normalization.method = "SCT" , anchor.features = features)
+merged_seurat_integrated <- IntegrateData(anchorset = anchors, normalization.method = "SCT" , dims = 1:40)
+```
+## Run the standard workflow for visualization
+```{r}
+## The integrated dataset vill store the values in the "integrated" assay
+DefaultAssay(merged_seurat_integrated) <- "integrated"
+
+merged_seurat_integrated <- RunPCA(merged_seurat_integrated, verbose = FALSE)
+merged_seurat_integrated <- RunUMAP(merged_seurat_integrated, reduction = "pca", dims = 1:50)
+```
+```{r}
+## Save the integrated Seurat object
+saveRDS(merged_seurat_integrated, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat.rds")
+```
+
+
+## Plot the 3 datasets to visualize the difference
+
+```{r}
+DimPlot(merged_seurat, reduction="umap", group.by = "Timepoint")
+DimPlot(harmonized_seurat, reduction="umap", group.by = "Timepoint")
+DimPlot(merged_seurat_integrated, reduction="umap", group.by = "Timepoint")
+
+DimPlot(merged_seurat, reduction="umap", group.by = "Sample")
+DimPlot(harmonized_seurat, reduction="umap", group.by = "Sample")
+DimPlot(merged_seurat_integrated, reduction="umap", group.by = "Sample")
+```
+
+## Find clusters
+```{r}
+merged_seurat_integrated <- FindNeighbors(object = merged_seurat_integrated, reduction = "pca")
+merged_seurat_integrated <- FindClusters(merged_seurat_integrated, resolution = 0.5)
+
+table(merged_seurat_integrated@meta.data$seurat_clusters)  #shows the size of each cluster
+```
+
+## Let's plot the clusters
+```{r}
+DimPlot(merged_seurat,label.size = 4,repel = T,label = T)
+DimPlot(harmonized_seurat,label.size = 4,repel = T,label = T)
+DimPlot(merged_seurat_integrated,label.size = 4,repel = T,label = T)
+```
+
+```{r}
+FeaturePlot(merged_seurat_integrated, features = c("DCX", "TACC3", "HES1"))
+```
+
+
+```{r}
+## Save the integrated Seurat object
+saveRDS(merged_seurat_integrated, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson.rds")
+```
+
+## Anotate Clusters
+```{r}
+## Find the markers within cluster
+# first prepare the merged and integrated object for DE analysis (this normalizes the SCT counts across samples)
+merged_seurat_integrated <- PrepSCTFindMarkers(merged_seurat_integrated)
+
+## Save the integrated Seurat object
+saveRDS(merged_seurat_integrated, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers.rds")
+
+## load the integrated Seurat object
+merged_seurat_integrated <- readRDS("/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers.rds")
+
+# change default assay. SCT is used when looking at gene expression
+DefaultAssay(merged_seurat_integrated) <- "SCT"
+
+# find markers for every cluster compared to all remaining cells, report only the positive ones
+
+merged_seurat_integrated.markers <- FindAllMarkers(merged_seurat_integrated, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25, assay = "SCT")
+
+marker_list_top10 <- merged_seurat_integrated.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 25, order_by = avg_log2FC) %>%
+  select(cluster, gene)
+
+marker_list_top10
+
+write.table(marker_list_top10, file = "markers_merged_Seurat.txt", sep = "\t",
+            row.names = FALSE, col.names = TRUE)
+```
+0	PLCG2			-> microglial cells; glial cells
+0	HSP90AA1			-> glial cells (Muller and Schwann)
+0	MDM2    -> oligodendrocytes
+0	H3F3B		-> microglial cells; glial cells	
+0	POLR2A		-> glial cells (Muller and Schwann)	
+0	CCDC144NL-AS1			
+0	RBM39			-> Glial cells
+0	KMT2E			
+0	NOP58			
+0	USP15
+
+```{r}
+## Neurons (cluster 1, 5, 7, 10, 11, 13)
+VlnPlot(merged_seurat_integrated, features = c("DCX"))
+FeaturePlot(merged_seurat_integrated, features = c("DCX"))
+```
+
+```{r}
+## Excitatory Neurons (cluster 1 and 7)
+VlnPlot(merged_seurat_integrated, features = c("NEUROD2"))
+FeaturePlot(merged_seurat_integrated, features = c("NEUROD2"))
+```
+
+
+```{r}
+## Outer Radial Glia (cluster 4)
+VlnPlot(merged_seurat_integrated, features = c("HOPX", "PTPRZ1", "FAM107A"))
+FeaturePlot(merged_seurat_integrated, features = c("HOPX", "PTPRZ1", "FAM107A"))
+```
+```{r}
+## Proliferating RG (cluster 8)
+VlnPlot(merged_seurat_integrated, features = c("TACC3"))
+FeaturePlot(merged_seurat_integrated, features = c("TACC3"))
+```
+```{r}
+## Intermediate progenitor cells
+VlnPlot(merged_seurat_integrated, features = c("EOMES", "RBFOX1", "SOX4", "HOPX"))
+FeaturePlot(merged_seurat_integrated, features = c("EOMES", "RBFOX1", "SOX4", "HOPX"))
+```
+```{r}
+## Microglia (cluster x)
+VlnPlot(merged_seurat_integrated, features = c("AIF1"))
+FeaturePlot(merged_seurat_integrated, features = c("AIF1"))
+```
+
+
+```{r}
+## Choroid (subcluster of cluster 4)
+VlnPlot(merged_seurat_integrated, features = c("TTR"))
+FeaturePlot(merged_seurat_integrated, features = c("TTR"))
+```
+```{r}
+## Interneurons (cluster 7)
+VlnPlot(merged_seurat_integrated, features = c("SST", "PVALB"))
+FeaturePlot(merged_seurat_integrated, features = c("SST", "PVALB"))
+```
+
+```{r}
+## Interneurons (cluster 7)
+VlnPlot(merged_seurat_integrated, features = c("ANK3", "NOVA1", "GAD1"))
+FeaturePlot(merged_seurat_integrated, features = c("ANK3", "NOVA1", "GAD1"))
+
+```
+```{r}
+## Neurons abundant in ribosome (cluster 10)
+VlnPlot(merged_seurat_integrated, features = c("RPS29", "RPL18A"))
+FeaturePlot(merged_seurat_integrated, features = c( "RPS29", "RPL18A"))
+
+```
+
+```{r}
+## Neural Progenitor Cells NPCs (cluster 12 and 13)
+VlnPlot(merged_seurat_integrated, features = c("NES", "SOX2", "FGFR1"))
+FeaturePlot(merged_seurat_integrated, features = c("NES", "SOX2", "FGFR1"))
+
+```
+
+```{r}
+## Oligodendrocyte Precursor Cells (cluster 14)
+VlnPlot(merged_seurat_integrated, features = c("SOX10", "OLIG1", "PCDH15", "MBP", "PDGFRA", "PTPRZ1"))
+FeaturePlot(merged_seurat_integrated, features = c("SOX10", "OLIG1", "PCDH15", "MBP", "PDGFRA", "PTPRZ1"))
+
+```
+
+```{r}
+## Oligodendrocyte markers (cluster x)
+VlnPlot(merged_seurat_integrated, features = c("MOG", "MAG", "PLP1", "MOBP", "MBP", "PDGFRA"))
+FeaturePlot(merged_seurat_integrated, features = c("MOG", "MAG", "PLP1", "MOBP", "MBP", "PDGFRA"))
+
+```
+
+
+
+
+
+```{r}
+## Astrocytes markers (cluster x)
+VlnPlot(merged_seurat_integrated, features = c("GFAP", "SLC1A3", "AQP4", "SLC1A2", "ALDH1L1", "GJA1"))
+FeaturePlot(merged_seurat_integrated, features = c("GFAP", "SLC1A3", "AQP4", "SLC1A2", "ALDH1L1", "GJA1"))
+
+```
+```{r}
+## Radial Glia (cluster 3 and 4)
+VlnPlot(merged_seurat_integrated, features = c("VIM", "EDNRB", "SOX3", "ZFP36L1", "HES1", "ATP1A2")) 
+FeaturePlot(merged_seurat_integrated, features = c("VIM", "EDNRB", "SOX3", "ZFP36L1", "HES1", "ATP1A2")) 
+```
+
+
+
+
+
+
+## Let's subset the dataset with neuronal clusters to identify markers specific for each population.
+
+```{r}
+# create a subset
+subset_neuronal_clusters <- subset(merged_seurat_integrated, idents = c("5", "7", "1", "10", "13", "11"))
+
+# find markers within subset
+subset_neuronal_clusters.markers <- FindAllMarkers(
+  object = subset_neuronal_clusters,
+  min.pct = 0.25,
+  logfc.threshold = 0.25,
+  assay = "SCT",
+  only.pos = TRUE ,
+  recorrect_umi = FALSE
+)
+
+#filter
+
+subset_neuronal_clusters.markers.filtered <- subset_neuronal_clusters.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 20, order_by = avg_log2FC) %>%
+  select(cluster, gene)
+
+subset_neuronal_clusters.markers.filtered
+
+#save
+write.table(subset_neuronal_clusters.markers.filtered, file = "neuronal_clusters_markers.txt", sep = "\t",
+            row.names = FALSE, col.names = TRUE)
+
+```
+
+
+## Cluster 12 and 13 are both Neural Progenitors. Let's subset them and run a DE
+
+```{r}
+# create a subset
+cluster_12_vs_13 <- subset(merged_seurat_integrated, idents = c("12", "13"))
+
+# find markers within subset
+cluster_12_vs_13.markers <- FindAllMarkers(
+  object = cluster_12_vs_13,
+  min.pct = 0.25,
+  logfc.threshold = 0.25,
+  assay = "SCT",
+  only.pos = TRUE ,
+  recorrect_umi = FALSE
+)
+
+#filter
+
+cluster_12_vs_13.markers.filtered <- cluster_12_vs_13.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 20, order_by = avg_log2FC) %>%
+  select(cluster, gene)
+
+cluster_12_vs_13.markers.filtered
+
+#save
+write.table(cluster_12_vs_13.markers.filtered, file = "NPCs_clusters_markers.txt", sep = "\t",
+            row.names = FALSE, col.names = TRUE)
+
+```
+
+
+
+## Let's subset the remaining unknown clusters (0, 9, 2, 6) to identify markers specific for each population.
+
+```{r}
+# create a subset
+subset_remaining_clusters <- subset(merged_seurat_integrated, idents = c("0", "9", "2", "6"))
+
+# find markers within subset
+subset_remaining_clusters.markers <- FindAllMarkers(
+  object = subset_remaining_clusters,
+  min.pct = 0.25,
+  logfc.threshold = 0.25,
+  assay = "SCT",
+  only.pos = TRUE ,
+  recorrect_umi = FALSE
+)
+
+#filter
+
+subset_remaining_clusters.markers.filtered <- subset_remaining_clusters.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 20, order_by = avg_log2FC) %>%
+  select(cluster, gene)
+
+subset_remaining_clusters.markers.filtered
+
+#save
+write.table(subset_remaining_clusters.markers.filtered, file = "remaining_clusters_markers.txt", sep = "\t",
+            row.names = FALSE, col.names = TRUE)
+
+```
+## Let's subset cluster 4 and identify the different subpopulations
+```{r}
+# create a subset
+cluster_4 <- subset(merged_seurat_integrated, idents = c("4"))
+
+
+# Find clusters
+DefaultAssay(cluster_4) <- "integrated"
+cluster_4 <- FindNeighbors(object = cluster_4, reduction = "pca")
+cluster_4 <- FindClusters(cluster_4, resolution = 0.2)
+
+table(cluster_4@meta.data$seurat_clusters)  #shows the size of each cluster
+
+DimPlot(cluster_4, reduction="umap", group.by = "Timepoint")
+DimPlot(cluster_4, reduction="umap", group.by = "Sample")
+DimPlot(cluster_4,label.size = 4,repel = T,label = T)
+```
+
+```{r}
+
+
+# find markers within subset
+cluster_4.markers <- FindAllMarkers(
+  object = cluster_4,
+  min.pct = 0.25,
+  logfc.threshold = 0.25,
+  assay = "SCT",
+  only.pos = TRUE ,
+  recorrect_umi = FALSE
+)
+
+#filter
+
+cluster_4.markers.filtered <- cluster_4.markers %>%
+    group_by(cluster) %>%
+    slice_max(n = 20, order_by = avg_log2FC) %>%
+  select(cluster, gene)
+
+cluster_4.markers.filtered
+
+#save
+write.table(cluster_4.markers.filtered, file = "Cluster_4_subclusters_markers.txt", sep = "\t",
+            row.names = FALSE, col.names = TRUE)
+
+```
+
+```{r}
+DefaultAssay(cluster_4) <- "SCT"
+## Astrocytes markers (cluster 2)
+VlnPlot(cluster_4, features = c("APOE"))
+FeaturePlot(cluster_4, features = c("APOE"))
+
+```
+```{r}
+## Choroid (subcluster of cluster 1)
+VlnPlot(cluster_4, features = c("TTR"))
+FeaturePlot(cluster_4, features = c("TTR"))
+```
+
+```{r}
+## Outer Radial Glia (cluster 4)
+VlnPlot(cluster_4, features = c("HOPX", "PTPRZ1", "FAM107A"))
+FeaturePlot(cluster_4, features = c("HOPX", "PTPRZ1", "FAM107A"))
+```
+## Let's subset again cluster 4 to identify choroid plexus cells (TTR+)
+```{r}
+# create a subset
+cluster_4_1 <- subset(cluster_4, idents = c("1"))
+
+
+# Find clusters
+DefaultAssay(cluster_4_1) <- "integrated"
+cluster_4_1 <- FindNeighbors(object = cluster_4_1, reduction = "pca")
+cluster_4_1 <- FindClusters(cluster_4_1, resolution = 0.2)
+
+
+DimPlot(cluster_4_1, reduction="umap", group.by = "Timepoint")
+DimPlot(cluster_4_1, reduction="umap", group.by = "Sample")
+DimPlot(cluster_4_1,label.size = 4,repel = T,label = T)
+```
+```{r}
+DefaultAssay(cluster_4_1) <- "SCT"
+## Choroid (subcluster of cluster 1)
+VlnPlot(cluster_4_1, features = c("TTR"))
+FeaturePlot(cluster_4_1, features = c("TTR"))
+DimPlot(cluster_4_1,label.size = 4,repel = T,label = T) + NoLegend()
+
+```
+
+## Finally we can assign the names of the clusters
+### Subcluster 1 of cluster 4
+```{r}
+## Assign names in the subsubclusters of subcluster 1
+new.cluster.ids <- c("1", "Choroid Plexus cells", "1")
+names(new.cluster.ids) <- levels(cluster_4_1)
+cluster_4_1 <- RenameIdents(cluster_4_1, new.cluster.ids)
+DimPlot(cluster_4_1, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+```{r}
+## project those identities back to subclusters of cluster 4
+
+# Get the indices of cells that are present in both the original Seurat object and the subseurat object
+indices <- match(rownames(cluster_4_1@meta.data), rownames(cluster_4@meta.data))
+
+# Assign the subcluster identities to the corresponding cells in the original Seurat object
+cluster_4$subclusters_1 <- as.character(Idents(cluster_4))
+
+cluster_4@meta.data$subclusters_1[indices] <- as.character(Idents(cluster_4_1))
+
+
+# Visualize the subclusters in the original Seurat object
+DimPlot(cluster_4, reduction = "umap", group.by = "subclusters_1")
+DimPlot(cluster_4, reduction = "umap")
+
+
+Idents(cluster_4) <- "subclusters_1"
+Idents(cluster_4) <- "integrated_snn_res.0.2"
+VlnPlot(cluster_4, features = c("TTR"))
+FeaturePlot(cluster_4, features = c("TTR"))
+```
+
+```{r}
+## Assign names in the subsubclusters of subcluster 1
+new.cluster.ids <- c("OPCs-2", "oRG", "NPCs-1", "Choroid Plexus cells", "Astrocytes")
+names(new.cluster.ids) <- levels(cluster_4)
+cluster_4 <- RenameIdents(cluster_4, new.cluster.ids)
+DimPlot(cluster_4, reduction = "umap", label = TRUE, pt.size = 0.5) 
+```
+
+
+```{r}
+## project those identities back to cluster 4 of Seurat object
+
+# Get the indices of cells that are present in both the original Seurat object and the subseurat object
+indices <- match(rownames(cluster_4@meta.data), rownames(merged_seurat_integrated@meta.data))
+
+# Assign the subcluster identities to the corresponding cells in the original Seurat object
+merged_seurat_integrated$cluster_names <- as.character(Idents(merged_seurat_integrated))
+
+merged_seurat_integrated@meta.data$cluster_names[indices] <- as.character(Idents(cluster_4))
+
+
+# Visualize the subclusters in the original Seurat object
+DimPlot(merged_seurat_integrated, reduction = "umap", group.by = "cluster_names")
+DimPlot(merged_seurat_integrated, reduction = "umap")
+
+
+Idents(merged_seurat_integrated) <- "cluster_names"
+DimPlot(merged_seurat_integrated, reduction = "umap", label = FALSE, pt.size = 0.5) + NoLegend()
+
+## save plot
+ggsave("UMAP_clusters_no_annotation.svg" , device=png, dpi = 600, path = "/home/data/Testa_organoids_scRNA/Surat_code/outputs/figures", bg = "transparent", width = 25, height = 15, units = "cm" )
+
+```
+
+```{r}
+## Assign names of all remaining clusters
+new.cluster.ids <- c("Glial cells", "RG - enriched ribosomes", "OPCs-1", "OPCs-2", "Excitatory Neurons", "Proliferating RG", "RG", "Neurons-1", "RG - Astrocytes", "Immature Neurons", "oRG", "Neurons-2", "NPCs-1", "NPCs-3", "Choroid Plexus cells", "NPCs-2", "Neurons - ribosome enriched", "Astrocytes", "OPCs - Oligodendrocytes")
+names(new.cluster.ids) <- levels(merged_seurat_integrated)
+merged_seurat_integrated <- RenameIdents(merged_seurat_integrated, new.cluster.ids)
+merged_seurat_integrated$cluster_names_final <- as.character(Idents(merged_seurat_integrated))
+DimPlot(merged_seurat_integrated, reduction = "umap", label = TRUE, repel = TRUE, pt.size = 0.5) + theme(legend.text = element_text(size = 8))
+
+## save plot
+ggsave("UMAP_clusters_annotation_legend.png" , device=png, dpi = 600, path = "/home/data/Testa_organoids_scRNA/Surat_code/outputs/figures", bg = "transparent", width = 25, height = 15, units = "cm" )
+
+```
+### save
+```{r}
+## Save the integrated Seurat object
+saveRDS(merged_seurat_integrated, "/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers_identified_clusters.rds")
+
+## load the integrated Seurat object
+merged_seurat_integrated <- readRDS("/home/data/Testa_organoids_scRNA/Seurat_code/outputs/merged_dataset_integrated_with_Seurat_SCT_Pearson_Ready_Markers_identified_clusters.rds")
+```
+
+
+# Downstream analyses on isoforms THRA1 and THRA2
+## adjust levels for graphs
+```{r}
+## order the cell population in pseudotime
+new_order <- c("RG", "Proliferating RG", "NPCs-2","RG - enriched ribosomes", "OPCs-1", "oRG", "OPCs - Oligodendrocytes","RG - Astrocytes", "Astrocytes", "NPCs-1","OPCs-2", "Choroid Plexus cells", "Glial cells", "Neurons - ribosome enriched","NPCs-3",  "Immature Neurons",   "Neurons-1",    "Neurons-2", "Excitatory Neurons" )
+Idents(merged_seurat_integrated) <- factor(Idents(merged_seurat_integrated), levels= new_order)
+## order the timepoints
+merged_seurat_integrated$Timepoint <- factor(merged_seurat_integrated$Timepoint, levels = c("day_50", "day_100"))
+```
+
+## plot isoforms expression
+```{r}
+## do plots
+FeaturePlot(merged_seurat_integrated, features = c("THRA"))
+FeaturePlot(merged_seurat_integrated, features = c("THRA1"))
+FeaturePlot(merged_seurat_integrated, features = c("THRA2"))
+```
+
+### raster plots
+```{r}
+RidgePlot(merged_seurat_integrated, features = c("VIM")) + NoLegend()+ 
+  theme(axis.title=element_blank(), axis.text.x = element_text(size = 10))
+```
+
+
+
+### Violin plots
+```{r}
+VlnPlot(merged_seurat_integrated, features = c("THRA1"), split.by = "Timepoint", split.plot = TRUE)
+VlnPlot(merged_seurat_integrated, features = c("THRA2"), split.by = "Timepoint", split.plot = TRUE, pt.size = 0) + 
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(size = 10))
+
+
+
+VlnPlot(merged_seurat_integrated, features = c("THRA2"), pt.size = 0, split.by = "Timepoint", split.plot = T) + 
+  theme(axis.title.x=element_blank(), axis.text.x = element_text(size = 10)) + NoLegend() + ylim(0, 2)
+
+ggsave("Violin_THRA2_timepoints.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+```
+
+
+### DotPlots
+```{r}
+DotPlot(merged_seurat_integrated, features = c("THRA1", "THRA2"), dot.scale = 7.5) + 
+  theme(axis.title=element_blank())+ scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" ) 
+
+
+
+DotPlot(merged_seurat_integrated, features = c("THRA1", "THRA2", "SLC16A2"), dot.scale = 7.5) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_MCT8_dotplot.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+
+DotPlot(merged_seurat_integrated, features = c("THRA1", "THRA2"), split.by = "Timepoint") + 
+  theme(axis.title.x=element_blank())
+```
+
+
+### FeaturePlots
+```{r}
+FeaturePlot(merged_seurat_integrated, features = c("THRA1", "THRA2"), blend = TRUE)
+
+FeaturePlot(merged_seurat_integrated, features = c("THRA1", "THRA2"), split.by = "Timepoint" )
+ggsave("UMAP_THRA1_THRA2_timepoints.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+
+FeaturePlot(merged_seurat_integrated, features = c("SLC16A2"), split.by = "Timepoint" )
+FeaturePlot(merged_seurat_integrated, features = c("SLC16A2"))
+```
+
+## Split dataset into timepoints to visualize the difference in expression in one graph
+```{r}
+# create a subsets
+day_50 <- subset(merged_seurat_integrated, subset = Timepoint == "day_50" )
+day_100 <- subset(merged_seurat_integrated, subset = Timepoint == "day_100" )
+```
+
+
+```{r}
+# plot (making sure that axis are comparable)
+
+DotPlot(day_50, features = c("THRA1", "THRA2"), dot.scale = 7.5, scale.max = 25, col.min = -1, col.max = 2.1) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot_day_50.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+
+
+DotPlot(day_100, features = c("THRA1", "THRA2"), dot.scale = 7.5, scale.max = 25, col.min = -1, col.max = 2.1) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+
+ggsave("THRA1_THRA2_dotplot_day_100.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+
+```
+## Visualize the proportions of each cell population between conditions
+```{r}
+# How does cluster membership vary by replicate?
+table(Idents(merged_seurat_integrated), merged_seurat_integrated$Timepoint)
+
+cell_composition <- as.data.frame(prop.table(table(Idents(merged_seurat_integrated), merged_seurat_integrated$Timepoint), margin = 2)) %>%
+  mutate(Freq = round((Freq * 100), digits = 2)) %>%
+  mutate(Freq_adjusted = ifelse(Var2 == "day_50", Freq *-1,Freq))
+
+cell_composition
+
+ggplot(cell_composition, aes(x=Var1, y=Freq_adjusted, label=Var2)) + 
+  geom_bar(stat='identity',position = "stack", aes(fill=Var2), width=.5)  +
+   theme_light(base_size = 12)+
+  scale_fill_manual(name="", 
+                    labels = c( "day_50", "day_100"), 
+                    values = c("day_50"="#5A7C86", "day_100"="#A2D2DB")) + 
+  scale_y_continuous("% of cells" ,limits=c(-20, 20))+ 
+#  geom_hline(yintercept=50, linetype="dashed", color = "#DC4E3C")+
+  #labs(subtitle="", 
+      # title= "THRA isoform expression pattern - Mosdepth",
+       #caption = "~62M uniquely mapped reads, n=1") + 
+    theme(axis.title.y=element_blank()) +
+  coord_flip()
+
+ggsave("Cell_population_distribution_timepoints.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 25, height = 15, units = "cm" )
+
+```
+
+
+
+
+
+### DotPlot of differentially expressed genes
+```{r}
+
+DotPlot(merged_seurat_integrated, features = c("VIM","SOX3", "PAX6", "UBE2C",  "FABP7", "PLP1", "APOE", "CSNK1G1", "RMST", "TTR", "PCP4",  "STMN2", "GAP43", "SYT1", "DCX", "CADM2"), dot.scale = 6, dot.min = 0.24) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red")) +
+  scale_x_discrete(guide = guide_axis(angle = 75))
+
+
+ggsave("DotPlot_markers.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+```
+
+
+### DotPlot of genes involved in the Dopamine system
+```{r}
+
+DotPlot(merged_seurat_integrated, features = c("TH","QDPR", "GCH1", "DDC",  "COMT", "MAOA", "MAOB", "DRD1", "DRD2", "DRD3", "SLC6A3"), dot.scale = 6, dot.min = 0.0) + 
+  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red")) +
+  scale_x_discrete(guide = guide_axis(angle = 75))
+
+
+ggsave("DotPlot_Dopamine_metabolism.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Regress out Cell cycles
+First, we assign each cell a score, based on its expression of G2/M and S phase markers. These marker sets should be anticorrelated in their expression levels, and cells expressing neither are likely not cycling and in G1 phase.
+
+We assign scores in the CellCycleScoring() function, which stores S and G2/M scores in object meta data, along with the predicted classification of each cell in either G2M, S or G1 phase. CellCycleScoring() can also set the identity of the Seurat object to the cell-cycle phase by passing set.ident = TRUE (the original identities are stored as old.ident). Please note that Seurat does not use the discrete classifications (G2M/G1/S) in downstream cell cycle regression. Instead, it uses the quantitative scores for G2M and S phase. However, we provide our predicted classifications in case they are of interest.
+
+```{r}
+# Calculate the cell state based on cell cycle markers
+s.genes <- cc.genes.updated.2019$s.genes
+g2m.genes <- cc.genes.updated.2019$g2m.genes
+
+srat <- CellCycleScoring(srat, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+table(srat[[]]$Phase)
+```
+```{r}
+# Visualize the distribution of cell cycle markers across
+RidgePlot(srat, features = c("PCNA", "TOP2A", "MCM6", "MKI67"), ncol = 2)
+```
+
+```{r}
+# Running a PCA on cell cycle genes reveals, unsurprisingly, that cells separate entirely by phase
+
+srat <- RunPCA(srat, features = c(s.genes, g2m.genes))
+DimPlot(srat)
+```
+### Normal regression for normal datasets
+```{r}
+# Let's regress it out
+#srat <- ScaleData(srat, vars.to.regress = c("S.Score", "G2M.Score"), features = rownames(srat))
+
+```
+
+### Regression in developmental dataset
+The procedure above removes all signal associated with cell cycle. In some cases, we’ve found that this can negatively impact downstream analysis, particularly in differentiating processes (like murine hematopoiesis), where stem cells are quiescent and differentiated cells are proliferating (or vice versa). In this case, regressing out all cell cycle effects can blur the distinction between stem and progenitor cells as well.
+
+As an alternative, we suggest regressing out the difference between the G2M and S phase scores. This means that signals separating non-cycling cells and cycling cells will be maintained, but differences in cell cycle phase among proliferating cells (which are often uninteresting), will be regressed out of the data
+
+```{r}
+## done on server, takes >4h
+srat$CC.Difference <- srat$S.Score - srat$G2M.Score
+srat <- ScaleData(srat, vars.to.regress = "CC.Difference", features = rownames(srat))
+```
+```{r}
+## reload and visual inspection
+srat <- readRDS(file = "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids_scRNA_Seq/outputs/cortical_organoids_cell_cycle_regressed_out.rds") 
+
+```
+
+```{r}
+# Running a PCA on cell cycle genes again, to visualize the effects of regression
+
+srat <- RunPCA(srat, features = c(s.genes, g2m.genes))
+DimPlot(srat)
+```
+
+
+
+
+
+
+```{r}
+## save
+saveRDS(srat, file = "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids_scRNA_Seq/outputs/cortical_organoids_results.rds")
+sessionInfo()
+```
+

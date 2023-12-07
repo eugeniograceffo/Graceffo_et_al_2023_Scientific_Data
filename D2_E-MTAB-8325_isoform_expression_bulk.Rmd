@@ -1,0 +1,306 @@
+---
+title: "THRA Isoform 1 and Isoform 2 Relative Expression"
+output:
+  html_document:
+    toc: True
+    toc_float: True
+    df_print: paged
+editor_options: 
+  chunk_output_type: inline
+---
+
+INTRODUCTION to the Experiment
+Dataset from Testa et al 2020 (E-MTAB-8325 https://www.ebi.ac.uk/biostudies/arrayexpress/studies/E-MTAB-8325?query=e-MTAB-8325)
+A total of 9 samples of human cortical organoids (3 timepoints, 3 replicates each). Bulk RNA seq data. First-Stranded pair-end reads. Read counts of exon 9a (Chr17:40089333) and exon 9b (Chr17:40089334)
+
+```{r}
+#load libraries
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(plotly)
+library(matrixStats)
+library(ggrepel)
+library(scales)
+library(readxl)
+library(dplyr)
+library(ggpubr)
+
+```
+
+
+```{r}
+## set paths for output figure
+path_plots <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/E-MTAB-8325_Testa_Organoids_Bulk/Expression_pattern_output"
+
+
+
+## load metadata file
+
+metadata <- read_excel("Metadata_Testa_Organoids_Bulk_E_MTAB_8325.xls")
+
+## load metadata file of EBI
+
+metadata_ebi <- read_delim("filereport_read_run_PRJEB38729_tsv.txt")
+
+
+## load sequencing depth for normalization
+
+depth <- read_delim("Sequencing_depth.txt")
+
+```
+
+```{r}
+### let's prepare the metadata file
+
+metadata_ebi <- select(metadata_ebi, "Sample"="run_accession", "ENA_EXPERIMENT"= "experiment_accession")
+
+metadata <- inner_join(metadata, metadata_ebi, by = "ENA_EXPERIMENT") %>%
+  select(Sample, disease, sex, individual, "study_day" =time, compound) %>%
+  unique()
+
+metadata
+
+```
+
+
+
+```{r}
+### Calulations with the STRINGTIE ouput - new
+
+path_plots_stringtie <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/E-MTAB-8325-8337_Testa_Organoids/Bulk_analysis/StringTie_TPM_outputs/plots"
+
+
+##Load StringTie outputs
+
+file_links_stringtie <- list.files(path= "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/E-MTAB-8325-8337_Testa_Organoids/Bulk_analysis/StringTie_TPM_outputs" , pattern = "*.txt", full.names=T)
+
+
+# initialize an empty dataframe
+data_stringtie <- data_frame("Sample"=character(),
+                   "gene_id"=character(),
+                   "transcript_id"=character(),
+                   "gene_name"=character(),
+                   "coverage"=character(),
+                   "FPKM"=character(),
+                   "TPM"=character())
+
+for (x in file_links_stringtie) {
+  
+  basename_sample <- str_remove(basename(x), "_Aligned.out.stringtie_THRA_isoforms.txt")  ## get the sample name from the file path
+  table_sample <- read.delim(x, header = FALSE) ## read table
+  
+  table_sample <- table_sample %>%
+    separate_wider_delim("V1", delim = ";", names = c("V1", "V2", "V3", "V4", "V5", "V6", "V7")) %>%
+    select(-"V7") %>%
+    separate_wider_delim("V1", delim = " ", names = c("Vx", "gene_id")) %>%
+    select(-"Vx")%>%
+    separate_wider_delim("V2", delim = " ", names = c("Vx", "Vy","transcript_id"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V3", delim = " ", names = c("Vx", "Vy","gene_name"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V4", delim = " ", names = c("Vx", "Vy","coverage"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V5", delim = " ", names = c("Vx", "Vy","FPKM"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V6", delim = " ", names = c("Vx", "Vy","TPM"), too_many = "merge") %>%
+    select(-"Vx", -"Vy") %>%
+    mutate("Sample"=basename_sample, .before = "gene_id" )
+  
+
+  data_stringtie <- bind_rows(data_stringtie, table_sample)
+  
+}
+
+## adjust the classes
+data_stringtie$Sample <- as.character(data_stringtie$Sample)
+data_stringtie$gene_id <- as.factor(data_stringtie$gene_id)
+data_stringtie$transcript_id <- as.factor(data_stringtie$transcript_id)
+data_stringtie$coverage <- as.double(data_stringtie$coverage)
+data_stringtie$FPKM <- as.double(data_stringtie$FPKM)
+data_stringtie$TPM <- as.double(data_stringtie$TPM)
+
+data_stringtie
+```
+
+```{r}
+## Let's add a column that specifies the name of the known isoforms
+
+data_stringtie <- data_stringtie %>%
+  mutate(isoform = ifelse(str_starts(transcript_id, "ENST00000450525") | str_starts(transcript_id, "ENST00000546243"), "THRA1", ifelse(str_starts(transcript_id, "ENST00000264637") | str_starts(transcript_id, "ENST00000584985"), "THRA2", "Other")))
+
+data_stringtie$isoform <- as.factor(data_stringtie$isoform)
+data_stringtie
+```
+
+## single plots of each sample
+```{r}
+for (file in unique(data_stringtie$Sample)) {
+  
+
+df_plot_single <-filter(data_stringtie, Sample == file)
+
+ggplot(df_plot_single, aes(x=transcript_id, y=TPM, label=isoform)) + 
+  geom_bar(stat='summary', position = "stack", aes(fill=isoform), width=.5)  +
+   theme_light(base_size = 14)+
+  scale_y_continuous("TPM") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= as.character(file),
+       caption = "")+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_", as.character(file),".png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+}
+```
+
+
+## Calclulate TPM for total THRA1 and total THRA2
+```{r}
+df_plot_all_samples <-  select(data_stringtie, Sample, isoform,TPM) %>%
+  filter(isoform != "Other") %>%
+  group_by(Sample, isoform) %>%
+  mutate(total_TPM = sum(TPM)) %>% ## sum of all THRA1 isoforms and all THRA2 isoforms together
+  select(-TPM) %>%
+  unique()
+
+
+```
+
+
+
+
+# Let's add in the metadata information and graph the results per timepoint
+```{r}
+### let's fill in with the metadata
+df_plot_all_samples <- inner_join(df_plot_all_samples, metadata, by ="Sample") 
+
+### rearrangement and factorization of columns
+df_plot_all_samples$sex <- as.factor(df_plot_all_samples$sex)
+df_plot_all_samples$study_day <- as.factor(df_plot_all_samples$study_day)
+
+```
+
+
+
+
+
+```{r}
+ggbarplot(df_plot_all_samples, x = "study_day", y = "total_TPM", add = "mean_se",
+          fill = "isoform") +
+  scale_fill_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="Human cortical organoids - Testa dataset - StringTie", 
+       title= paste0(""),
+       caption = "Mean +- SEM, n=3 \n ~51M uniquely mapped reads") +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+
+  scale_y_continuous("Transcripts per Million (TPM)")+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+ggsave("THRA1_THRA2_over_time_organoids_stacked_with_error_bars_STRINGTIE.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+
+## Analyze the featureCounts outputs - Exon validation
+
+### Get the scaling factor
+```{r}
+## get the scaling factor from all the gene counts
+
+df_all_genes <- read.delim("~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/E-MTAB-8325-8337_Testa_Organoids/Bulk_analysis/Exon_validation/featureCounts_output_all_genes.txt", header = TRUE, skip=1) ## read table
+
+df_THRA_exons <- read.delim("~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/E-MTAB-8325-8337_Testa_Organoids/Bulk_analysis/Exon_validation/featureCounts_output_THRA_isoforms.txt", header = TRUE, skip=1) ## read table
+
+df_THRA_exons <- df_THRA_exons %>%
+  filter(Geneid == "Exon_9b_short"| Geneid == "Exon_9b_long" | Geneid == "Exon_10") %>%
+  select(-Chr, -Start, -End, -Strand)
+
+## bind data together to make calculations just once
+df_all_genes <- df_all_genes %>%
+  select(-Chr, -Start, -End, -Strand) %>%
+  bind_rows(df_THRA_exons)
+
+# TPM is defined as: Fragment counts / gene length in Kb / sum of RPK per million
+
+## Let's first calculate the gene length in kb
+df_all_genes_RPK <- df_all_genes %>%
+  mutate(length_kb = df_all_genes$Length/1000 , .after = "Length") # calculate length in kb
+
+rownames(df_all_genes_RPK) <- df_all_genes_RPK$Geneid %>%
+  str_remove_all("_Aligned.out.sorted.bam")
+
+## Let's calculate the read per kilobase (RPK)
+df_all_genes_RPK <- df_all_genes_RPK %>%
+  select(-Geneid) %>%
+   mutate(across(where(is.numeric), ~ .x/`length_kb`)) %>% # normalizes against read length in kb
+  select(-Length, -length_kb)
+
+  
+## Let's calculate the per million scaling factor
+df_all_genes_scaling <- as.data.frame(t(df_all_genes_RPK)) # transpose the dataframe
+
+rownames(df_all_genes_scaling) <- rownames(df_all_genes_scaling) %>%
+  str_remove_all("_Aligned.out.sorted.bam")
+
+df_all_genes_scaling <- df_all_genes_scaling %>%
+  mutate(scaling_factor = rowSums(across(where(is.numeric)))/1000000) 
+
+
+## Let's finally calculate the transcripts per million (TPM)
+df_all_genes_TPM <- df_all_genes_scaling %>%
+   mutate(across(where(is.numeric), ~ .x/`scaling_factor`)) # value/M of reads
+
+
+df_THRA_exons_TPM <- df_all_genes_TPM %>%
+  select(Exon_9b=Exon_9b_long, Exon_9b_short, Exon_10)
+
+
+## add in metadata
+metadata_short <- select(metadata, Sample, study_day)
+
+df_THRA_exons_TPM <- df_THRA_exons_TPM %>%
+  mutate(Sample = rownames(df_THRA_exons_TPM)) %>%
+  inner_join(metadata_short) 
+
+## data wrangling for visualization
+
+df_THRA_exons_TPM_longer <- df_THRA_exons_TPM %>%
+  pivot_longer(c("Exon_9b", "Exon_9b_short", "Exon_10"), names_to = "Target", values_to = "TPM") %>%
+  filter(Target != "Exon_9b_short")
+  
+
+```
+
+
+```{r}
+
+df_THRA_exons_TPM_longer$Target <- factor(df_THRA_exons_TPM_longer$Target, levels = c("Exon_9b", "Exon_10"))  # convert to factor to retain sorted order in plot.
+
+
+ggbarplot(df_THRA_exons_TPM_longer, x = "study_day", y = "TPM", add = "mean_se",
+          fill = "Target") +
+  scale_fill_manual("", values = c("Exon_9b"="#A2D2DB","Exon_10" = "#5A7C86")) +
+  labs(subtitle="Human cortical organoids - Testa dataset - StringTie", 
+       title= paste0(""),
+       caption = "Mean +- SEM, n=3 \n ~51M uniquely mapped reads") +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+
+  scale_y_continuous("Transcripts per Million (TPM)")+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+ggsave("Exon_validation_TPM_featurecounts.png" , device=png, dpi = 600, path = "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/E-MTAB-8325-8337_Testa_Organoids/Bulk_analysis/Exon_validation", bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+

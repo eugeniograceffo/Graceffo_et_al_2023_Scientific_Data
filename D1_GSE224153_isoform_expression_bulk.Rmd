@@ -1,0 +1,286 @@
+---
+title: "THRA Isoform 1 and Isoform 2 Relative Expression"
+output:
+  html_document:
+    toc: True
+    toc_float: True
+    df_print: paged
+---
+
+INTRODUCTION to the Experiment
+
+A total of 24 samples of human tissues. RNA seq data. First-Stranded pair-end reads. Read counts of exon 9a (Chr17:40089333) and exon 9b (Chr17:40089334)
+
+```{r}
+#load libraries
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(plotly)
+library(matrixStats)
+library(ggrepel)
+library(scales)
+library(readxl)
+library(dplyr)
+library(ggpubr)
+
+```
+
+
+```{r}
+## set paths for output figure
+path_plots <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/THRA_isoform_Expression_Coverage"
+
+path_plots_featurecounts <-"~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/featureCounts_outputs/plots"
+
+## load metadata file
+
+metadata <- read_excel("metadata.xlsx")
+
+
+## load sequencing depth for normalization
+
+depth <- read_delim("Sequencing_depth_Takara.txt")
+
+
+```
+
+```{r}
+### Calculations with the STRINGTIE ouput
+
+path_plots_stringtie <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/StringTie_TPM_outputs/plots"
+
+##Load StringTie outputs
+
+file_links_stringtie <- list.files(path= "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/TAKARA_Samples/StringTie_TPM_outputs" , pattern = "*.txt", full.names=T)
+
+
+# initialize an empty dataframe
+data_stringtie <- data_frame("Sample"=character(),
+                   "gene_id"=character(),
+                   "transcript_id"=character(),
+                   "gene_name"=character(),
+                   "coverage"=character(),
+                   "FPKM"=character(),
+                   "TPM"=character())
+
+for (x in file_links_stringtie) {
+  
+  basename_sample <- str_remove(basename(x), "_Aligned.out.stringtie_THRA_isoforms.txt")  ## get the sample name from the file path
+  table_sample <- read.delim(x, header = FALSE) ## read table
+  
+  table_sample <- table_sample %>%
+    separate_wider_delim("V1", delim = ";", names = c("V1", "V2", "V3", "V4", "V5", "V6", "V7")) %>%
+    select(-"V7") %>%
+    separate_wider_delim("V1", delim = " ", names = c("Vx", "gene_id")) %>%
+    select(-"Vx")%>%
+    separate_wider_delim("V2", delim = " ", names = c("Vx", "Vy","transcript_id"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V3", delim = " ", names = c("Vx", "Vy","gene_name"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V4", delim = " ", names = c("Vx", "Vy","coverage"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V5", delim = " ", names = c("Vx", "Vy","FPKM"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V6", delim = " ", names = c("Vx", "Vy","TPM"), too_many = "merge") %>%
+    select(-"Vx", -"Vy") %>%
+    mutate("Sample"=basename_sample, .before = "gene_id" )
+  
+
+  data_stringtie <- bind_rows(data_stringtie, table_sample)
+  
+}
+
+## adjust the classes
+data_stringtie$Sample <- as.character(data_stringtie$Sample)
+data_stringtie$gene_id <- as.factor(data_stringtie$gene_id)
+data_stringtie$transcript_id <- as.factor(data_stringtie$transcript_id)
+data_stringtie$coverage <- as.double(data_stringtie$coverage)
+data_stringtie$FPKM <- as.double(data_stringtie$FPKM)
+data_stringtie$TPM <- as.double(data_stringtie$TPM)
+
+data_stringtie
+
+
+write.csv(data_stringtie, "data_stringtie.csv")
+```
+
+
+```{r}
+## Let's add a column that specifies the name of the known isoforms
+
+data_stringtie <- data_stringtie %>%
+  mutate(isoform = ifelse(str_starts(transcript_id, "ENST00000450525") | str_starts(transcript_id, "ENST00000546243"), "THRA1", ifelse(str_starts(transcript_id, "ENST00000264637") | str_starts(transcript_id, "ENST00000584985"), "THRA2", "Other")))
+
+data_stringtie$isoform <- as.factor(data_stringtie$isoform)
+data_stringtie
+```
+## single plots of each sample
+```{r}
+for (file in unique(data_stringtie$Sample)) {
+  
+
+df_plot_single <-filter(data_stringtie, Sample == file)
+
+ggplot(df_plot_single, aes(x=transcript_id, y=TPM, label=isoform)) + 
+  geom_bar(stat='summary', position = "stack", aes(fill=isoform), width=.5)  +
+   theme_light(base_size = 14)+
+  scale_y_continuous("TPM") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= as.character(file),
+       caption = "")+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_", as.character(file),".png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+}
+```
+
+
+
+## Graphs to compare all the tissues together
+
+```{r}
+
+df_plot_all_samples <-  select(data_stringtie, Sample, isoform,TPM) %>%
+  filter(isoform != "Other") %>%
+  group_by(Sample, isoform) %>%
+  mutate(total_TPM = sum(TPM)) %>% ## sum of all THRA1 isoforms and all THRA2 isoforms together
+  select(-TPM) %>%
+  unique()
+  
+clean_data <-  df_plot_all_samples %>%
+  group_by(Sample) %>%
+  mutate(THRA = sum(total_TPM)) # THRA expression in total
+
+clean_data <-  clean_data %>%
+  pivot_wider(values_from="total_TPM", names_from = "isoform") %>%
+  mutate(delta=THRA2-THRA1)
+  
+  
+df_plot_all_samples <- inner_join(df_plot_all_samples, select(clean_data, "Sample", "delta") ) 
+
+df_plot_all_samples <- df_plot_all_samples[order(df_plot_all_samples$delta), ]  # sort
+
+
+
+write.csv(clean_data, "clean_data.csv")
+####
+
+
+ggbarplot(df_plot_all_samples, x = "Sample", y = "total_TPM", add = "mean_se",
+          fill = "isoform") +
+  scale_fill_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="TAKARA - StringTie", 
+       title= paste0(""),
+       caption = "~62M uniquely mapped reads") +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+
+#  geom_vline(xintercept="A15_stomach", linetype="dashed", color = "red")+
+  scale_y_continuous("Transcripts per Million (TPM)")+ 
+    theme(axis.title.y=element_blank(), 
+          axis.text = element_text(size = 13.9),
+          plot.title = element_text(size = 16),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_all_samples.png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+
+
+
+
+
+
+
+
+
+## single plots of skeletal and smooth muscle for presentation
+```{r}
+
+  
+df_plot_single <-filter(clean_data, Sample == "A22_skeletal_muscle") %>%
+  pivot_longer(cols = c("THRA1", "THRA2"), names_to = "isoform", values_to = "TPM")
+  
+  
+ggbarplot(df_plot_single, x="isoform", y="TPM", fill="isoform") + 
+   theme_light(base_size = 20)+
+  scale_y_continuous("TPM") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= "A22_skeletal_muscle",
+       caption = "")+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_A22_skeletal_muscle_clean_StringTie.png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+
+
+####
+df_plot_single <-filter(clean_data, Sample == "A23_smooth_muscle") %>%
+  pivot_longer(cols = c("THRA1", "THRA2"), names_to = "isoform", values_to = "TPM")
+  
+  
+ggbarplot(df_plot_single, x="isoform", y="TPM", fill="isoform") + 
+   theme_light(base_size = 20)+
+  scale_y_continuous("TPM") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= "A23_smooth_muscle",
+       caption = "")+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_A23_smooth_muscle_clean_StringTie.png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+###
+df_plot_single <-filter(clean_data, Sample == "A01_brain_total") %>%
+  pivot_longer(cols = c("THRA1", "THRA2"), names_to = "isoform", values_to = "TPM")
+  
+  
+ggbarplot(df_plot_single, x="isoform", y="TPM", fill="isoform") + 
+   theme_light(base_size = 20)+
+  scale_y_continuous("TPM") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= "A01_brain_total",
+       caption = "")+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_A01_brain_total_clean_StringTie.png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

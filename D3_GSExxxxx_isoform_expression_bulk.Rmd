@@ -1,0 +1,273 @@
+---
+title: "THRA Isoform 1 and Isoform 2 Relative Expression"
+output:
+  html_document:
+    toc: True
+    toc_float: True
+    df_print: paged
+editor_options: 
+  chunk_output_type: inline
+---
+
+INTRODUCTION to the Experiment
+
+A total of 8 samples of brain organoids at timepoints 21(x2), 46(x3) and 61(x3). RNA seq data. First-Stranded pair-end reads. Read counts of exon 9a (Chr17:40089333) and exon 9b (Chr17:40089334)
+
+```{r}
+#load libraries
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(plotly)
+library(matrixStats)
+library(ggrepel)
+library(scales)
+library(readxl)
+library(dplyr)
+library(ggpubr)
+
+```
+
+
+```{r}
+## set paths for output figure
+path_plots <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids/Figures/Expression_pattern"
+
+## load metadata file
+
+metadata <- read_excel("Metadata_brain_organoids.xlsx")
+
+## load sequencing depth for normalization
+
+depth <- read_delim("Sequencing_depth.txt")
+
+```
+
+
+
+
+```{r}
+### Calulations with the STRINGTIE ouput - new
+
+path_plots_stringtie <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids/StringTie_TPM_outputs/plots"
+
+
+##Load StringTie outputs
+
+file_links_stringtie <- list.files(path= "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids/StringTie_TPM_outputs" , pattern = "*.txt", full.names=T)
+
+
+# initialize an empty dataframe
+data_stringtie <- data_frame("Sample"=character(),
+                   "gene_id"=character(),
+                   "transcript_id"=character(),
+                   "gene_name"=character(),
+                   "coverage"=character(),
+                   "FPKM"=character(),
+                   "TPM"=character())
+
+for (x in file_links_stringtie) {
+  
+  basename_sample <- str_remove(basename(x), "_1.fq.gz_Aligned.out.stringtie_THRA_isoforms.txt")  ## get the sample name from the file path
+  table_sample <- read.delim(x, header = FALSE) ## read table
+  
+  table_sample <- table_sample %>%
+    separate_wider_delim("V1", delim = ";", names = c("V1", "V2", "V3", "V4", "V5", "V6", "V7")) %>%
+    select(-"V7") %>%
+    separate_wider_delim("V1", delim = " ", names = c("Vx", "gene_id")) %>%
+    select(-"Vx")%>%
+    separate_wider_delim("V2", delim = " ", names = c("Vx", "Vy","transcript_id"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V3", delim = " ", names = c("Vx", "Vy","gene_name"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V4", delim = " ", names = c("Vx", "Vy","coverage"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V5", delim = " ", names = c("Vx", "Vy","FPKM"), too_many = "merge") %>%
+    select(-"Vx", -"Vy")%>%
+    separate_wider_delim("V6", delim = " ", names = c("Vx", "Vy","TPM"), too_many = "merge") %>%
+    select(-"Vx", -"Vy") %>%
+    mutate("Sample"=basename_sample, .before = "gene_id" )
+  
+
+  data_stringtie <- bind_rows(data_stringtie, table_sample)
+  
+}
+
+## adjust the classes
+data_stringtie$Sample <- as.character(data_stringtie$Sample)
+data_stringtie$gene_id <- as.factor(data_stringtie$gene_id)
+data_stringtie$transcript_id <- as.factor(data_stringtie$transcript_id)
+data_stringtie$coverage <- as.double(data_stringtie$coverage)
+data_stringtie$FPKM <- as.double(data_stringtie$FPKM)
+data_stringtie$TPM <- as.double(data_stringtie$TPM)
+
+data_stringtie
+```
+
+```{r}
+## Let's add a column that specifies the name of the known isoforms
+
+data_stringtie <- data_stringtie %>%
+  mutate(isoform = ifelse(str_starts(transcript_id, "ENST00000450525") | str_starts(transcript_id, "ENST00000546243"), "THRA1", ifelse(str_starts(transcript_id, "ENST00000264637") | str_starts(transcript_id, "ENST00000584985"), "THRA2", "Other")))
+
+data_stringtie$isoform <- as.factor(data_stringtie$isoform)
+data_stringtie
+```
+
+
+
+## single plots of each sample
+```{r}
+for (file in unique(data_stringtie$Sample)) {
+  
+
+df_plot_single <-filter(data_stringtie, Sample == file)
+
+ggplot(df_plot_single, aes(x=transcript_id, y=TPM, label=isoform)) + 
+  geom_bar(stat='summary', position = "stack", aes(fill=isoform), width=.5)  +
+   theme_light(base_size = 14)+
+  scale_y_continuous("TPM") +
+  theme(axis.title.y=element_blank()) +
+  scale_fill_manual(name="Isoform", 
+                    labels = c( "THRA1", "THRA2"), 
+                    values = c("THRA1"="#A2D2DB", "THRA2"="#5A7C86")) + 
+  labs(subtitle="", 
+       title= as.character(file),
+       caption = "")+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_", as.character(file),".png") , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+}
+```
+
+## Calclulate TPM for total THRA1 and total THRA2
+```{r}
+df_plot_all_samples <-  select(data_stringtie, Sample, isoform,TPM) %>%
+  filter(isoform != "Other") %>%
+  group_by(Sample, isoform) %>%
+  mutate(total_TPM = sum(TPM)) %>% ## sum of all THRA1 isoforms and all THRA2 isoforms together
+  select(-TPM) %>%
+  unique()
+
+df_plot_all_samples
+```
+
+# Let's add in the metadata information and graph the results per timepoint
+```{r}
+### let's fill in with the metadata
+df_plot_all_samples <- inner_join(df_plot_all_samples, metadata, by ="Sample") 
+
+### rearrangement and factorization of columns
+df_plot_all_samples$sex <- as.factor(df_plot_all_samples$Treatment)
+df_plot_all_samples$study_day <- as.factor(df_plot_all_samples$study_day)
+
+```
+
+
+```{r}
+df_plot_control <- filter(df_plot_all_samples, Treatment=="control")
+
+ggbarplot(df_plot_control, x = "study_day", y = "total_TPM", add = "mean_se",
+          fill = "isoform") +
+  scale_fill_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="Human cortical organoids - Opitz dataset - StringTie", 
+       title= paste0(""),
+       caption = "Mean +- SEM, n>=2 \n ~78M uniquely mapped reads") +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+
+  scale_y_continuous("Transcripts per Million (TPM)")+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+ggsave("THRA1_THRA2_over_time_Opitz_organoids_stacked_with_error_bars_STRINGTIE.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+
+
+
+```
+### Treatment graphs
+```{r}
+df_plot_treatment_vs_control <- df_plot_all_samples %>%
+  select(Sample, isoform, total_TPM, Treatment, study_day)%>%
+  group_by(Sample) %>%
+  mutate(THRA = sum(total_TPM)) %>%  ## THRA expression in total
+  pivot_wider(names_from = "isoform", values_from = "total_TPM")
+
+
+  ggline(df_plot_treatment_vs_control, x = "study_day", y = "THRA1", add = "mean_se",
+          color = "Treatment") +
+  scale_color_manual("", values = c("control"="#A2D2DB","T3_pulse" = "#E98A33")) +
+  stat_compare_means(aes(group = Treatment), label = "p.signif", method = "anova", label.y = 160) +
+  labs(subtitle="T3 pulse treatment - THRA1", 
+       title= paste0(""),
+       caption = "one-way ANOVA, n>=2\n ~78M uniquely mapped reads") +
+  scale_y_continuous("Transcripts per Million (TPM)", limits = c(0,430)) +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+## save plot
+ggsave("Treatment_over_time_THRA1.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+
+
+
+  ggline(df_plot_treatment_vs_control, x = "study_day", y = "THRA2", add = "mean_se",
+          color = "Treatment") +
+  scale_color_manual("", values = c("control"="#5A7C86","T3_pulse" = "#E98A33")) +
+  stat_compare_means(aes(group = Treatment), label = "p.signif", method = "anova", label.y = 410) +
+  labs(subtitle="T3 pulse treatment - THRA2", 
+       title= paste0(""),
+       caption = "one-way ANOVA, n>=2\n ~78M uniquely mapped reads") +
+  scale_y_continuous("Transcripts per Million (TPM)", limits = c(0,430)) +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+## save plot
+ggsave("Treatment_over_time_THRA2.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+
+
+
+
+  ggline(df_plot_treatment_vs_control, x = "study_day", y = "THRA", add = "mean_se",
+          color = "Treatment") +
+  scale_color_manual("", values = c("control"="#302B27","T3_pulse" = "#E98A33")) +
+  stat_compare_means(aes(group = Treatment), label = "p.signif", method = "anova", label.y = 420) +
+  labs(subtitle="T3 pulse treatment - THRA", 
+       title= paste0(""),
+       caption = "one-way ANOVA, n>=2\n ~78M uniquely mapped reads") +
+  scale_y_continuous("Transcripts per Million (TPM)", limits = c(0,430)) +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+ 
+    theme(axis.text = element_text(size = 20),
+          plot.title = element_text(size = 18),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+## save plot
+ggsave("Treatment_over_time_THRA.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+```
+
+
+
+
+
+
+
+
+
+
