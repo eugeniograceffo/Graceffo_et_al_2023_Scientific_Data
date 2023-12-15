@@ -1,0 +1,180 @@
+---
+title: "THRA Isoform 1 and Isoform 2 Relative Expression"
+output:
+  html_document:
+    toc: True
+    toc_float: True
+    df_print: paged
+---
+
+INTRODUCTION to the Experiment
+
+THRA isoform analysis from publication "Full-length transcript sequencing of human and mouse cerebral cortex identifies widespread isoform diversity and alternative splicing" by Leung S. et al 2021 Cell Reports
+
+PacBio SMRT long read seq of Human:
+-Adult Cortex
+-Fetal Cortex
+-Fetal Striatum
+-Fetal Hippocampus
+
+```{r}
+#load libraries
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(plotly)
+library(matrixStats)
+library(ggrepel)
+library(scales)
+library(readxl)
+library(dplyr)
+library(ggpubr)
+
+```
+
+
+```{r}
+## set paths for output figure
+path_plots <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/SRA_PRJNA664117/plots"
+
+
+##Load outputs
+
+file_links <- list.files(path= "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/SRA_PRJNA664117" , pattern = "*.xlsx", full.names=T)
+
+# initialize an empty dataframe
+results <- tibble("isoform"=character(),
+                   "Replicate"=character(),
+                   "raw_counts"=double(),
+                   "total_counts"=double(),
+                   "TPM"=double(),
+                  "Sample"=character()) 
+
+
+for (x in file_links) {
+
+sample_name <- str_remove(str_remove(basename(x), "PRJNA664117_SQANTI_isoform_expression_matrix_"), ".xlsx") 
+# getting the scaling factor (sum of all raw counts)
+scaling_factor_df <- read_excel(x) %>%
+  select("gene_ID"="associated_gene", "transcript_id" ="associated_transcript", 46:ncol(.))%>%
+  select(where(is.numeric)) %>%
+  summarise(across(everything(), ~ sum(., na.rm = TRUE)))%>%
+  pivot_longer(1:ncol(.) ,names_to = "Replicate", values_to = "total_counts")
+
+# creating a dataframe
+isoforms_df <- read_excel(x)%>%
+  filter(associated_gene == "THRA") %>%
+  select("gene_ID"="associated_gene", "transcript_id" ="associated_transcript", 46:ncol(.))  %>%
+  mutate(isoform = ifelse(str_starts(transcript_id, "ENST00000450525") | str_starts(transcript_id, "ENST00000546243"), "THRA1", ifelse(str_starts(transcript_id, "ENST00000264637") | str_starts(transcript_id, "ENST00000584985"), "THRA2", "Other")))%>% #select which isoforms are THRA1 and which are THRA2
+  select(-gene_ID, -transcript_id)%>%
+  group_by(isoform)%>%
+  summarize(across(everything(), ~ sum(., na.rm = TRUE))) %>% # sums up all that are THRA1 and all that are THRA2
+  pivot_longer(2:ncol(.),names_to = "Replicate", values_to = "raw_counts") %>%
+  left_join(scaling_factor_df, by="Replicate") %>%
+  mutate(TPM= (raw_counts / total_counts *1000000)) %>% #calulate TPM
+  mutate(dataset=sample_name)%>% # keep track from which excel sheet the data came from
+  mutate(Sample=str_sub(.$Replicate,start=4, end=-2)) # gets nice sample name from "FL.sampleX"
+
+# let's bind together
+results <- bind_rows(results, isoforms_df)
+
+}
+
+results
+```
+
+
+
+## Graphs to compare all the tissues together
+
+```{r}
+
+df_plot_all_samples <-  select(results, Sample, isoform,TPM) %>%
+  filter(isoform != "Other") 
+
+df_plot_all_samples <- df_plot_all_samples %>% 
+  mutate(Sample=factor(Sample)) %>% 
+  mutate(Sample=fct_relevel(Sample,c("FetalSTR","FetalHIP","FetalCTX", "AdultCTX"))) %>%
+ arrange(Sample)
+
+####
+
+
+ggbarplot(df_plot_all_samples, x = "Sample", y = "TPM", add = "mean_se",
+          fill = "isoform") +
+  scale_fill_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="Long-read PacBio dataset", 
+       title= paste0(""),
+       caption = "") +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+
+#  geom_vline(xintercept="A15_stomach", linetype="dashed", color = "red")+
+  scale_y_continuous("Transcripts per Million (TPM)")+ 
+    theme(axis.title.y=element_blank(), 
+          axis.text = element_text(size = 13.9),
+          plot.title = element_text(size = 16),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))+
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_all_samples_long_read.png") , device=png, dpi = 600, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+```
+
+```{r}
+
+df_plot_cortex <-  df_plot_all_samples %>%
+  filter(Sample == "AdultCTX"|Sample == "FetalCTX" ) 
+####
+
+
+ggbarplot(df_plot_cortex, x = "Sample", y = "TPM", add = "mean_se",
+          fill = "isoform") +
+  scale_fill_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="Long-read PacBio dataset", 
+       title= paste0(""),
+       caption = "") +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+
+#  geom_vline(xintercept="A15_stomach", linetype="dashed", color = "red")+
+  scale_y_continuous("Transcripts per Million (TPM)")+ 
+    theme(axis.title.y=element_blank(), 
+          axis.text = element_text(size = 13.9),
+          plot.title = element_text(size = 16),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14))
+
+ggsave(paste0("THRA_isoform_expression_cortical_long_read.png") , device=png, dpi = 600, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+```
+
+```{r}
+
+df_plot_cortex <-  df_plot_all_samples %>%
+  filter(Sample != "AdultCTX" ) 
+####
+
+
+ggbarplot(df_plot_cortex, x = "Sample", y = "TPM", add = "mean_se",
+          fill = "isoform") +
+  scale_fill_manual("", values = c("THRA1"="#A2D2DB","THRA2" = "#5A7C86")) +
+  labs(subtitle="Long-read PacBio dataset", 
+       title= paste0(""),
+       caption = "") +
+  theme(legend.position='right')+
+  theme_light(base_size = 14)+
+#  geom_vline(xintercept="A15_stomach", linetype="dashed", color = "red")+
+  scale_y_continuous("Transcripts per Million (TPM)")+ 
+    theme(axis.title.y=element_blank(), 
+          axis.text = element_text(size = 13.9),
+          plot.title = element_text(size = 16),
+          legend.text = element_text(size = 14),
+          plot.caption = element_text(size = 14)) +
+  coord_flip()
+
+ggsave(paste0("THRA_isoform_expression_fetal_long_read.png") , device=png, dpi = 600, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+```
+
+
+
