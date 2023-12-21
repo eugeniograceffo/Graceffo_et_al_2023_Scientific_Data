@@ -780,9 +780,9 @@ merged_seurat_integrated$Timepoint <- factor(merged_seurat_integrated$Timepoint,
 ## plot isoforms expression
 ```{r}
 ## do plots
-FeaturePlot(merged_seurat_integrated, features = c("THRA"))
-FeaturePlot(merged_seurat_integrated, features = c("THRA1"))
-FeaturePlot(merged_seurat_integrated, features = c("THRA2"))
+FeaturePlot(neuronal_cluster, features = c("THRA"))
+FeaturePlot(neuronal_cluster, features = c("THRA1"))
+FeaturePlot(neuronal_cluster, features = c("THRA2"))
 ```
 
 ### raster plots
@@ -830,8 +830,14 @@ ggsave("THRA1_THRA2_MCT8_dotplot_all.png" , device=png, dpi = 600, path = path_p
 ## neuronal cluster
 DefaultAssay(neuronal_cluster) <- "SCT"
 
-DotPlot(neuronal_cluster, features = c("THRA1", "THRA2"), dot.scale = 7.5, assay = "SCT") + 
+## order the cell population in pseudotime
+new_order <- c("neural progenitor", "schwann", "sensory neuron","neuron")
+Idents(neuronal_cluster) <- factor(Idents(neuronal_cluster), levels= new_order)
+
+pdf("THRA1_THRA2_dotplot_neuronal_cluster_closeup.pdf")
+DotPlot(neuronal_cluster, features = c("THRA1", "THRA2"), assay = "SCT") + 
   theme(axis.title=element_blank())+ scale_colour_gradient(low =c("lightgrey"), high =c("red"))
+dev.off()
 
 ggsave("THRA1_THRA2_dotplot_neuronal_cluster_closeup.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" ) 
 
@@ -969,22 +975,16 @@ ggsave("Cell_population_distribution_timepoints.png" , device=png, dpi = 600, pa
 
 ### DotPlot of differentially expressed genes
 ```{r}
-# all head
-DotPlot(merged_seurat_integrated, features = c("VIM","SOX3", "PAX6", "UBE2C",  "FABP7", "PLP1", "APOE", "CSNK1G1", "RMST", "TTR", "PCP4",  "STMN2", "GAP43", "SYT1", "DCX", "CADM2"), dot.scale = 6, dot.min = 0.24) + 
-  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red")) +
-  scale_x_discrete(guide = guide_axis(angle = 75))
-
-
-ggsave("DotPlot_markers_all.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
-
-
+pdf("DotPlot_markers_neuronal_cluster.pdf")
 # closeup
-DotPlot(neuronal_cluster, features = c("VIM","SOX3", "PAX6", "UBE2C",  "FABP7", "PLP1", "APOE", "CSNK1G1", "RMST", "TTR", "PCP4",  "STMN2", "GAP43", "SYT1", "DCX", "CADM2"), dot.scale = 6, dot.min = 0.24) + 
+DotPlot(neuronal_cluster, features = c("VIM","SOX2", "PAX6", "SOX10", "MPZ", "PLP1",  "POU4F1", "STMN2", "GAP43", "DCX"), dot.scale = 6, dot.min = 0.24) + 
   theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red")) +
   scale_x_discrete(guide = guide_axis(angle = 75))
 
+dev.off()
 
-ggsave("DotPlot_markers_neuronal_cluster_closeup.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
+
+#ggsave("DotPlot_markers_neuronal_cluster_closeup.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
 
 
 ```
@@ -992,13 +992,6 @@ ggsave("DotPlot_markers_neuronal_cluster_closeup.png" , device=png, dpi = 600, p
 
 ### DotPlot of genes involved in the Dopamine system
 ```{r}
-## all
-DotPlot(merged_seurat_integrated, features = c("TH","QDPR", "GCH1", "DDC",  "COMT", "MAOA", "MAOB", "DRD1", "DRD2", "DRD3", "SLC6A3"), dot.scale = 6, dot.min = 0.0) + 
-  theme(axis.title=element_blank()) + scale_colour_gradient(low =c("lightgrey"), high =c("red")) +
-  scale_x_discrete(guide = guide_axis(angle = 75))
-
-
-ggsave("DotPlot_Dopamine_metabolism_all.png" , device=png, dpi = 600, path = path_plots, bg = "transparent", width = 20, height = 15, units = "cm" )
 
 ## neuronal subcluster
 DotPlot(neuronal_cluster, features = c("TH","QDPR", "GCH1", "DDC",  "COMT", "MAOA", "MAOB", "DRD1", "DRD2", "DRD3", "SLC6A3"), dot.scale = 6, dot.min = 0.0) + 
@@ -1010,7 +1003,6 @@ ggsave("DotPlot_Dopamine_metabolism_neuronal_cluster_closeup.png" , device=png, 
 
 
 ```
-
 
 
 
