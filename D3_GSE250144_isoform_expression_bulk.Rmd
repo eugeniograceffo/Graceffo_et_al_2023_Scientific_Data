@@ -31,7 +31,7 @@ library(ggpubr)
 
 ```{r}
 ## set paths for output figure
-path_plots <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids/Figures/Expression_pattern"
+path_plots <- "~/OneDrive - ChariteÌ - UniversitaÌˆtsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids/Figures/Expression_pattern"
 
 ## load metadata file
 
@@ -49,12 +49,12 @@ depth <- read_delim("Sequencing_depth.txt")
 ```{r}
 ### Calulations with the STRINGTIE ouput - new
 
-path_plots_stringtie <- "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids/StringTie_TPM_outputs/plots"
+path_plots_stringtie <- "~/OneDrive - ChariteÌ - UniversitaÌˆtsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids/StringTie_TPM_outputs/plots"
 
 
 ##Load StringTie outputs
 
-file_links_stringtie <- list.files(path= "~/OneDrive - Charité - Universitätsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids/StringTie_TPM_outputs" , pattern = "*.txt", full.names=T)
+file_links_stringtie <- list.files(path= "~/OneDrive - ChariteÌ - UniversitaÌˆtsmedizin Berlin/Schuelke_Lab/EG15_RNA_Seq/Brain_organoids/StringTie_TPM_outputs" , pattern = "*.txt", full.names=T)
 
 
 # initialize an empty dataframe
@@ -192,16 +192,18 @@ ggsave("THRA1_THRA2_over_time_Opitz_organoids_stacked_with_error_bars_STRINGTIE.
 ```
 ### Treatment graphs
 ```{r}
+
 df_plot_treatment_vs_control <- df_plot_all_samples %>%
   select(Sample, isoform, total_TPM, Treatment, study_day)%>%
   group_by(Sample) %>%
   mutate(THRA = sum(total_TPM)) %>%  ## THRA expression in total
   pivot_wider(names_from = "isoform", values_from = "total_TPM")
 
+pdf("Treatment_over_time_THRA.pdf")
 
-  ggline(df_plot_treatment_vs_control, x = "study_day", y = "THRA1", add = "mean_se",
-          color = "Treatment") +
-  scale_color_manual("", values = c("control"="#A2D2DB","T3_pulse" = "#E98A33")) +
+  ggbarplot(df_plot_treatment_vs_control, x = "study_day", y = "THRA1", add = "mean_se",
+          fill = "Treatment", position = position_dodge(0.75)) +
+  scale_fill_manual("", values = c("control"="#A2D2DB","T3_pulse" = "#E98A33")) +
   stat_compare_means(aes(group = Treatment), label = "p.signif", method = "anova", label.y = 160) +
   labs(subtitle="T3 pulse treatment - THRA1", 
        title= paste0(""),
@@ -215,15 +217,15 @@ df_plot_treatment_vs_control <- df_plot_all_samples %>%
           plot.caption = element_text(size = 14))
 
 ## save plot
-ggsave("Treatment_over_time_THRA1.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+#ggsave("Treatment_over_time_THRA1.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
 
 
 
 
 
-  ggline(df_plot_treatment_vs_control, x = "study_day", y = "THRA2", add = "mean_se",
-          color = "Treatment") +
-  scale_color_manual("", values = c("control"="#5A7C86","T3_pulse" = "#E98A33")) +
+  ggbarplot(df_plot_treatment_vs_control, x = "study_day", y = "THRA2", add = "mean_se",
+          fill = "Treatment", position = position_dodge(0.75)) +
+  scale_fill_manual("", values = c("control"="#5A7C86","T3_pulse" = "#E98A33")) +
   stat_compare_means(aes(group = Treatment), label = "p.signif", method = "anova", label.y = 410) +
   labs(subtitle="T3 pulse treatment - THRA2", 
        title= paste0(""),
@@ -237,15 +239,15 @@ ggsave("Treatment_over_time_THRA1.png" , device=png, dpi = 600, path = path_plot
           plot.caption = element_text(size = 14))
 
 ## save plot
-ggsave("Treatment_over_time_THRA2.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+#ggsave("Treatment_over_time_THRA2.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
 
 
 
 
 
-  ggline(df_plot_treatment_vs_control, x = "study_day", y = "THRA", add = "mean_se",
-          color = "Treatment") +
-  scale_color_manual("", values = c("control"="#302B27","T3_pulse" = "#E98A33")) +
+  ggbarplot(df_plot_treatment_vs_control, x = "study_day", y = "THRA", add = "mean_se",
+          fill = "Treatment", position = position_dodge(0.75)) +
+  scale_fill_manual("", values = c("control"="#302B27","T3_pulse" = "#E98A33")) +
   stat_compare_means(aes(group = Treatment), label = "p.signif", method = "anova", label.y = 420) +
   labs(subtitle="T3 pulse treatment - THRA", 
        title= paste0(""),
@@ -257,11 +259,12 @@ ggsave("Treatment_over_time_THRA2.png" , device=png, dpi = 600, path = path_plot
           plot.title = element_text(size = 18),
           legend.text = element_text(size = 14),
           plot.caption = element_text(size = 14))
+  
+dev.off()
 
 ## save plot
-ggsave("Treatment_over_time_THRA.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
+#ggsave("Treatment_over_time_THRA.png" , device=png, dpi = 600, path = path_plots_stringtie, bg = "transparent", width = 20, height = 15, units = "cm" )
 ```
-
 
 
 
